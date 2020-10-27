@@ -1,0 +1,1362 @@
+
+---
+title: "[Final 200831] BRB0438_QC_tmpl_v6_noumi_190515-H3mm18KO_CTX_200831_200831only (200523verの解析続き)"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+library(SummarizedExperiment)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R") #ITO
+#source("/home/ito_mirror/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+count <- dplyr::count
+rename <- dplyr::rename
+```
+
+
+## BRB mouse CTX result
+
+
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+# ITO
+
+deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18KO_and_H3p3KO_0438/R_server__mouse_H3mm18KO_CTX__190924-/deftable_nucleosomever_BRB_noumi_H3mm18KO_and_H3p3KO_0438_190515-H3mm18KO_CTX_S2-Day0_S3_200523modif.txt"
+
+# カウントには、「/home/ito_mirror/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18KO_and_H3p3KO_0438/190515-H3mm18KO_CTX_S2_trimmed.counts.txt.gz」等を使用するように変更。
+
+
+use <- quo(sample!="H3mm18KO-Day5-intact-m2") #20200523はこちら
+use <- quo((sample!="H3mm18KO-Day5-intact-m2")&(intact_CTX!="intact")) #20200831変更　#こちらにしても、group1_CTX_Day5_H3mm18KO_vs_WTのDEGはほとんど変わらない
+
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+
+myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず＃
+
+#type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+#growth_Diff0h_vs_UI = c("growth","Diff0h","UI")
+
+
+#file	sample	group	group1	 WT_KO_intact_CTX	barcode	 WT_KO	Day	intact_CTX	f_m	replicate
+
+#file	sample	group	group1	barcode	 WT_KO	Day	intact_CTX	f_m	replicate
+
+
+#type,time,intact_CTX, f_m
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+#mycolor <- ggsci::scale_color_d3("category20") # color palette of points
+
+#myaes2 <- aes(colour=type) #kuwa add
+#myaes2 <- aes(colour=growth,shape=type)#kuwa add
+#myaes2 <- aes(colour=time,shape=type,size=count) #ラベルな
+#myaes2 <- aes(colour=time,shape=intact_CTX,size=type,label=f_m) #ラベルなし
+#myaes2 <- aes(colour=WT_KO,shape=intact_CTX,size=f_m,label=Day)
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+#model <- ~group
+
+model <- ~group1
+
+#fdr <- 0.1 # acceptable false discovery rate
+fdr <- 0.2 # acceptable false discovery rate
+
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+# controls should be placed in the right
+contrast <- list(
+
+  Intercept = list("Intercept"),
+  group1_SKM_Day0_H3mm18KO_vs_WT = c("group1", "H3mm18KO_Day0_SKM", "WT_Day0_SKM"),
+  group1_CTX_Day5_H3mm18KO_vs_WT = c("group1", "H3mm18KO_Day5_CTX", "WT_Day5_CTX"),
+  group1_CTX_Day14_H3mm18KO_vs_WT = c("group1", "H3mm18KO_Day14_CTX", "WT_Day14_CTX")
+
+  #group1_intact_Day5_H3mm18KO_vs_WT = c("group1", "H3mm18KO_Day5_intact", "WT_Day5_intact"),
+  #group1_intact_Day14_H3mm18KO_vs_WT = c("group1", "H3mm18KO_Day14_intact", "WT_Day14_intact")
+
+)
+
+
+sort_mouse <- c(
+  "WT-f179-SKM","WT-f870-SKM","WT-m181-SKM",
+  "WT-Day5-CTX-f1","WT-Day5-CTX-f2","WT-Day5-CTX-f3","WT-Day5-CTX-m1",
+  "WT-Day14-CTX-f1","WT-Day14-CTX-f2","WT-Day14-CTX-f3","WT-Day14-CTX-m1","WT-Day14-CTX-m2",
+  "H3mm18KO-f177-SKM","H3mm18KO-f869-SKM","H3mm18KO-m182-SKM",
+  "H3mm18KO-Day5-CTX-f1","H3mm18KO-Day5-CTX-f2","H3mm18KO-Day5-CTX-f3","H3mm18KO-Day5-CTX-m1","H3mm18KO-Day5-CTX-m2",
+  "H3mm18KO-Day14-CTX-f1","H3mm18KO-Day14-CTX-f2","H3mm18KO-Day14-CTX-f3","H3mm18KO-Day14-CTX-m1","H3mm18KO-Day14-CTX-m2"
+  
+  #"WT-Day5-intact-f1","WT-Day5-intact-f2","WT-Day5-intact-f3","WT-Day5-intact-m1",
+  #"WT-Day14-intact-f1","WT-Day14-intact-f2","WT-Day14-intact-f3","WT-Day14-intact-m1","WT-Day14-intact-m2",
+  #"H3mm18KO-Day5-intact-f1","H3mm18KO-Day5-intact-f2","H3mm18KO-Day5-intact-f3","H3mm18KO-Day5-intact-m1",
+  #"H3mm18KO-Day14-intact-f1","H3mm18KO-Day14-intact-f2","H3mm18KO-Day14-intact-f3","H3mm18KO-Day14-intact-m1","H3mm18KO-Day14-intact-m2" 
+)
+
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+if(!exists("e2g")){
+  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+  rename(
+    ens_gene = ensembl_gene_id,
+    ext_gene = external_gene_name,
+    biotype = gene_biotype,
+    chr = chromosome_name
+  )
+}
+annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+nrow(e2g)
+#readr::write_csv(e2g,"ensemble_list_asia_fin200831.csv")
+readr::write_csv(e2g,"ensemble_list_uswest_fin200831.csv")
+```
+
+### Load counts
+
+```{r loadUMI}
+def <- readr::read_tsv(deftable) %>% filter(!!use)
+print(def)
+
+def$sample
+length(sort_mouse)
+####--- New ---#### (no UMI ?)
+# Set reference levels according to the contrast
+for(x in keep(contrast,is.character))
+  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+
+umi <- def$file %>% unique %>% tibble(file=.) %>% 
+  dplyr::mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+  unnest() %>% dplyr::rename(barcode=cell) %>%
+  dplyr::inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+  select(-file,-barcode) %>% dplyr::rename(ens_gene=gene)
+
+print(umi)
+
+## sample, barcode, file を忘れずに！
+
+mat <- umi %>% annotate %>%
+  dplyr::mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+
+## to check read vias, this add read number as "n" column (2019/4/19)
+def <- umi %>% count(sample,wt=count) %>% dplyr::inner_join(def,.) %>% dplyr::rename(count=n)
+####-----------#### 
+
+
+
+
+# Set reference levels according to the contrast
+#for(x in keep(contrast,is.character))
+#  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+
+#umi <- def$file %>% unique %>% tibble(file=.) %>% 
+#  mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+#  unnest() %>% dplyr::rename(barcode=cell) %>%
+#  inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+#  select(-file,-barcode) %>% dplyr::rename(ens_gene=gene)
+
+#mat <- umi %>% annotate %>%
+#  mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+#  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+
+print(mat)
+
+## to check read vias, this add read number as "n" column (2019/4/19)
+#def <- umi %>% count(sample,wt=count) %>% inner_join(def,.) %>% dplyr::rename(count=n)
+
+print(def)
+
+
+##====================================##
+# 確認 (20191204) ２つの値は一緒か？
+# 生のデータカウント中の遺伝子総数
+
+umi %>% group_by(ens_gene) %>% summarise %>% nrow()
+
+umi %>% spread(sample,count,fill=0) %>% nrow()
+
+mat %>% nrow()
+mat %>% filter(chr!="MT") %>% nrow() # MTなし
+
+# matでは、chr等が不明なものは省いている。
+# DEGでは、さらにMTも省いている。
+##====================================##
+
+
+```
+
+### Reads breakdown
+
+#### Total reads
+
+```{r totalReads, fig.width=7,fig.height=5}
+bychr <- mat %>% select(-(1:3)) %>%
+  gather("sample","count",-chr) %>%
+  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+
+ggplot(bychr,aes(reorder(sample,dplyr::desc(sample)),total/1e6,fill=chr)) +
+  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+  scale_x_discrete(limits = rev(levels(sample)))
+
+
+```
+
+#### Biotype
+
+```{r biotype,fig.width=8,fig.height=7}
+bt <- mat %>% select(-c(1,2,4)) %>% group_by(biotype) %>%
+  summarise_all(sum) %>% filter_at(-1,any_vars(. > 1000))
+bt %>% tibble::column_to_rownames("biotype") %>%
+  as.matrix %>% t %>% mosaicplot(las=2,shade=TRUE)
+```
+
+### Correlations
+
+drop rows with all 0 -> +1/2 -> geom.scale -> log -> Pearson's
+
+```{r makemat, fig.width=8,fig.height=7}
+matf <- mat %>% filter(chr!="MT") %>% filter_at(-(1:4),any_vars(. > 0))
+X <- matf %>% select(-(1:4)) %>% as.matrix
+rownames(X) <- matf$ens_gene
+lX <- log(gscale(X+0.5))
+R <- cor(lX); diag(R) <- NA
+pheatmap::pheatmap(R,color=viridis::viridis(256))
+```
+
+### Dimension reduction
+
+```{r PCA,fig.width=4,fig.height=3}
+# set scale=TRUE if the patterns (not level) is the matter
+p <- prcomp(t(lX[rank(-apply(lX,1,var)) <= ntop,]),scale=scalerows,center=TRUE)
+screeplot(p,las=2,main="Importance")
+print(summary(p)$imp[,seq(min(10,ncol(X)))])
+```
+
+```{r makescoreDF}
+label <- def %>% filter(sample %in% colnames(X))
+df <- data.frame(p$x) %>% as_tibble(rownames="sample") %>%
+  inner_join(label,.) %>% select(-file)
+
+print(df)
+```
+
+```{r proximity,fig.width=6,fig.height=4}
+ggpoints(df,modifyList(aes(PC1,PC2),myaes))
+
+
+#----- nuleosomeでuwotの調子が悪いので消す 190827 -----#
+
+set.seed(seed)
+um <- uwot::umap(p$x,n_nei,2)
+df <- as_tibble(um) %>% rename(UMAP1=V1,UMAP2=V2) %>% bind_cols(df)
+ggpoints(df,modifyList(aes(UMAP1,UMAP2),myaes))
+
+print(df)
+
+##  kuwakado 変更 ##
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+#------------------------------------------------------#
+
+#ggpoints(df,modifyList(aes(PC1,PC2),myaes2))
+#set.seed(seed)
+#um <- uwot::umap(p$x,n_nei,2)
+#df <- as_tibble(um) %>% rename(UMAP1=V1,UMAP2=V2) %>% bind_cols(df)
+#ggpoints(df,modifyList(aes(UMAP1,UMAP2),myaes2))
+## ## ## ##
+```
+
+### DESeq2
+
+#### Fit model
+
+```{r deseq2}
+dds <- DESeq2::DESeqDataSetFromMatrix(X[,label$sample],label,model)
+dds <- DESeq2::DESeq(dds)
+
+
+#=====#
+
+dds <- DESeq2::estimateSizeFactors(dds)
+norm <- DESeq2::counts(dds,normalized=TRUE) #DEGを取った後のクラスタリングに使う。
+
+normalizedcount <- as.data.frame(norm) %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+readr::write_csv(normalizedcount, "./BRB0438re_H3mm18KO_mouse_CTX_normalizedcount_fin200523_add200831.csv")
+
+norm_gene <- normalizedcount %>% inner_join(e2g)
+readr::write_csv(norm_gene, "./BRB0438re_H3mm18KO_mouse_CTX_normalizedcount_genename_fin200523_add200831.csv")
+nrow(norm_gene)
+ncol(norm_gene)
+
+####--- + size factors を書き出し ------------------####
+as.data.frame(DESeq2::sizeFactors(dds))  %>% tibble::rownames_to_column("sample") %>% readr::write_csv("./BRB0438re_H3mm18KO_mouse_CTX_sizefactors_fin200523_add200831.csv")
+
+
+
+#count_dds <- estimateSizeFactors(dds)
+#counts(count_dds, normalized=TRUE)
+```
+vst => z score
+
+
+```{r setup matrix Deseq2 part4 200707 200831add}
+
+vsd <- DESeq2::vst(dds) #normalized countが入っている。(vstかrlog)
+#Xd <- summarisedExperiment::assay(vsd) # 全て選択(200326) 20190920を元に (191024)
+Xd <- SummarizedExperiment::assay(vsd) # 全て選択(200326) 20190920を元に (191024)
+Xs <- Xd %>% t %>% scale %>% t
+
+zscore <- Xs %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+zscore_type <- zscore  %>% annotate %>% dplyr::select("ens_gene","ext_gene", "biotype","chr", all_of(sort_mouse))
+
+
+
+readr::write_csv(zscore, "BRB0438re_H3mm18KO_mouse_CTX_zscore_all_fin200523_add200831.csv")
+readr::write_csv(zscore_type, "BRB0438re_H3mm18KO_mouse_CTX_zscore_type_all_fin200523_add200831.csv")
+
+nrow(zscore_type)
+
+```
+
+#### Diagnostics plot
+
+```{r diagnostics,fig.width=7,fig.height=5}
+DESeq2::sizeFactors(dds) %>%
+  {tibble(sample=names(.),sizeFactor=.)} %>%
+  ggplot(aes(sample,sizeFactor)) + theme_minimal() +
+  geom_bar(stat="identity") + coord_flip()
+DESeq2::plotDispEsts(dds)
+```
+
+#### Extract results
+
+```{r extractRes}
+res <- mapply(function(x)
+  DESeq2::results(dds,x,lfcThreshold=lfcthreth,alpha=fdr)
+,contrast)
+
+print(fdr)
+
+#re <- map(res,as_tibble,rownames="ens_gene") %>%
+#  tibble(aspect=factor(names(.),names(.)),data=.) %>%
+#  mutate(data=map(data,annotate)) %>%
+#  unnest(cols = "data") %>% filter(padj<fdr) #191120修正 unnest() 
+
+re_all <- map(res,as_tibble,rownames="ens_gene") %>%
+  tibble(aspect=factor(names(.),names(.)),data=.) %>%
+  mutate(data=map(data,annotate)) %>%
+  unnest(cols = "data")
+
+
+
+re <- re_all %>% filter(padj<fdr) #191120修正 unnest() 
+
+nrow(re_all %>% filter(aspect=="group1_CTX_Day5_H3mm18KO_vs_WT"))
+nrow(re %>% filter(aspect=="group1_CTX_Day5_H3mm18KO_vs_WT"))
+
+fc <- re %>% select(1:7) %>% filter(aspect!="Intercept") %>% spread(aspect,log2FoldChange,fill=0) # 20200803 修正
+
+imap(res,~{
+  cat(paste0("-- ",.y," --"))
+  DESeq2::summary(.x) #191120修正 DESeq2::summary.DESeqResults(.x)
+}) %>% invisible
+```
+
+### GSEA
+
+```{r GSEA, warning=FALSE}
+msig <- msigdbr::msigdbr(species)
+fgsea_msig <- partial(fgsea::fgsea,with(msig,split(gene_symbol,gs_name)))
+gscat <- msig %>% select(gs_name,gs_cat,gs_subcat) %>%
+  distinct() %>% rename(pathway=gs_name)
+
+#gsea <- re %>% filter(aspect!="Intercept") %>% group_by(aspect) %>%
+#  summarise(l2fc=list(setNames(log2FoldChange,ext_gene))) %>%
+#  mutate(gse=map(l2fc,fgsea_msig,nperm=10000,maxSize=500)) %>%
+#  select(-l2fc) %>% unnest %>% arrange(-NES) %>% right_join(gscat,.) %>%
+#  mutate(leadingEdge=map_chr(leadingEdge,paste,collapse=","))
+
+# gsea 修正ver [20190621]
+#gsea <- re %>% filter(aspect!="Intercept") %>% group_by(aspect) %>%
+#  summarise(l2fc=list(setNames(log2FoldChange,ext_gene))) %>%
+#  mutate(gse=map(l2fc,fgsea_msig,nperm=10000,maxSize=500)) %>%
+#  select(-l2fc) %>% unnest %>% arrange(-NES) %>% right_join(gscat,.) %>%
+#  mutate(leadingEdge=map_chr(leadingEdge,paste,collapse=",")) %>%
+#  group_by(aspect,gs_cat,gs_subcat) %>%
+#  mutate(padj=p.adjust(pval,"BH")) %>% ungroup()
+
+# gsea 修正ver [20190627]
+gsea <- re %>% filter(aspect!="Intercept") %>% group_by(aspect) %>%
+  summarise(l2fc=list(setNames(log2FoldChange,ext_gene))) %>%
+  filter(map(l2fc,length)>10) %>%
+  mutate(gse=map(l2fc,fgsea_msig,nperm=10000,maxSize=500)) %>%
+  select(-l2fc) %>% unnest %>% arrange(-NES) %>% right_join(gscat,.) %>%
+  mutate(leadingEdge=map_chr(leadingEdge,paste,collapse=",")) %>%
+  group_by(aspect,gs_cat,gs_subcat) %>%
+  mutate(padj=p.adjust(pval,"BH")) %>% ungroup()
+
+```
+
+```{r Hallmark, fig.width=8, fig.height=6}
+hallmark <- gsea %>% filter(gs_cat=="H") %>%
+  mutate(pathway=sub("^HALLMARK_","",pathway)) %>% 
+  group_by(aspect) %>% nest %>%
+  mutate(plt=map2(data,aspect,~
+    ggplot(.x,aes(reorder(pathway,NES),NES,fill=padj<0.1)) +
+    ggtitle(.y) + xlab("Hallmark gene sets") +
+    geom_bar(stat="identity") + theme_minimal() + coord_flip() +
+    theme(legend.position = "none") + ggsci::scale_fill_aaas())
+  )
+print(hallmark$plt)
+```
+
+See MSigDB Collections: <http://software.broadinstitute.org/gsea/msigdb/collections.jsp>
+
+### Write-out tables
+
+```{r writeout}
+if(exists("fc"))   readr::write_csv(fc,"./2gun/BRB0438re_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_l2fc_fdr0p2ver_fin200523_add200831.csv")
+if(exists("re"))   readr::write_csv(re,"./2gun/BRB0438re_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_results_fdr0p2ver_fin200523_add200831.csv")
+if(exists("re_all"))   readr::write_csv(re_all,"./2gun/BRB0438re_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_resultsall_fdr0p2ver_fin200523_add200831.csv")
+if(exists("gsea")) readr::write_csv(gsea,"./2gun/BRB0438re_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_gsea_fdr0p2ver_fin200523_add200831.csv")
+```
+
+### Write-out tables Hallmark
+
+```{r writeout Hallmark}
+
+hallmark_gsea <- gsea %>% filter(gs_cat=="H") %>% mutate(pathway=sub("^HALLMARK_","",pathway)) %>% group_by(aspect) %>% filter(aspect=="group1_CTX_Day5_H3mm18KO_vs_WT") 
+
+if(exists("hallmark_gsea"))   readr::write_csv(hallmark_gsea,"./2gun/BRB0438re_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_hallmark_gsea_CTX_Day5_H3mm18KO_vs_WT_fdr0p2ver_fin200523_add200831.csv")
+```
+
+### MAplot
+
+```{r maplot}
+# SKM
+maplot <- DESeq2::plotMA(res$group1_SKM_Day0_H3mm18KO_vs_WT , ylim=c(-4,4), main="SKM Day0 H3mm18KO vs WT")
+print(maplot)
+
+# CTX
+maplot <- DESeq2::plotMA(res$group1_CTX_Day5_H3mm18KO_vs_WT, ylim=c(-4,4), main="CTX Day5 H3mm18KO vs WT")
+print(maplot)
+maplot <- DESeq2::plotMA(res$group1_CTX_Day14_H3mm18KO_vs_WT, ylim=c(-4,4), main="CTX Day14 H3mm18KO vs WT")
+print(maplot)
+
+# intact
+#maplot <- DESeq2::plotMA(res$group1_intact_Day5_H3mm18KO_vs_WT , ylim=c(-4,4), main="intact Day5 H3mm18KO vs WT")
+#print(maplot)
+#maplot <- DESeq2::plotMA(res$group1_intact_Day14_H3mm18KO_vs_WT, ylim=c(-4,4), main="intact Day14 H3mm18KO vs WT")
+#print(maplot)
+
+```
+
+```{r coef_dds}
+
+#coef(dds)
+
+coef_dds <- coef(dds) %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+
+readr::write_csv(coef_dds, "BRB0438re_H3mm18KO_mouse_CTX_coef_fin200523_add200831.csv")
+
+```
+
+```{r norm count def table}
+
+Set_cutoff <- 10.0
+
+## 各時刻の平均を計算し、normalized count > 10 を超えるものを抽出する。
+
+#----- SKMとCTXのみ取り出す ---# 20191205
+norm_plotlist_all <- normalizedcount %>% gather("sample", "normalized",-(ens_gene)) %>% inner_join(def, by = "sample")
+norm_plotlist_all <- norm_plotlist_all %>% filter(intact_CTX=="CTX"|intact_CTX=="SKM") %>% mutate(WT_KO=factor(WT_KO, c("H3mm18KO","WT"))) %>% mutate(Day=factor(Day, c("Day0","Day5","Day14"))) %>% mutate(intact_CTX=factor(intact_CTX, c("CTX","SKM")))
+
+#notm_plotlist_cutoff <- norm_plotlist_all %>% annotate() %>% group_by(ens_gene, ext_gene, Day, intact_CTX) %>% summarise(groupMean=mean(normalized))  %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+
+notm_plotlist_beforecutoff <- norm_plotlist_all %>% annotate() %>% group_by(ens_gene, ext_gene, Day, intact_CTX) %>% summarise(groupMean=mean(normalized))
+
+notm_plotlist_cutoff <- notm_plotlist_beforecutoff %>% filter(groupMean > Set_cutoff) %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+nrow(notm_plotlist_beforecutoff %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()) #この値をMAplotのx軸に使用
+nrow(notm_plotlist_cutoff) #解析対象を絞る　(後の全体のクラスタリングに使用)
+
+
+```
+```{r norm_plotlist_all}
+
+norm_plotlist_all %>% readr::write_csv("Norm_deftable.csv")
+notm_plotlist_beforecutoff %>% readr::write_csv("Norm_groupMean.csv")
+notm_plotlist_cutoff  %>% readr::write_csv("Norm_groupMean_cutoff10.csv")
+
+
+nrow(notm_plotlist_beforecutoff)
+nrow(notm_plotlist_cutoff)
+
+```
+
+### MAplot (by hand)
+
+ASCs_list from "Histone H3.3 sub-variant H3mm7 is required for normal skeletal muscle regeneration", Harada, Maehara et al.
+
+```{r writeout maplot by hand, fig.width=7,fig.height=4}
+### ---------------------- ###
+
+#MGIGO <- readr::read_tsv("/home/guestA/o70578a/akuwakado/kuwakado/Reference_files/Mouse_Genome_Informatics_mgi_GO/MGI_Annotations_20200806download/GO_term_summary_20200805_220700__GO0035914_skeletal_muscle_cell_differentiation.txt",col_names = c("MGI","ext_gene"))
+
+#MGISC_tableGO <- readr::read_tsv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18KO_and_H3p3KO_0438/R_server__mouse_H3mm18KO_CTX__190924-/Final_Last_Rserver_200523_add200831/table_GOterm_SCs.txt",col_names = c("file"))
+
+
+#MGISC <- MGISC_tableGO$file %>% unique %>% tibble(file=.) %>% 
+#  dplyr::mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+#  unnest(cols = c(data))
+
+#MGISC_gene <- MGISC %>% dplyr::select(Symbol,`Annotated Term`) %>% group_by(Symbol) %>% summarise(count=n(),  `Annotated Term`=paste(`Annotated Term`,collapse = ", ")) %>% unique()   %>% mutate(list1=case_when(str_detect(`Annotated Term`, "negative")~"negative",str_detect(`Annotated Term`, "positive")~"positive",str_detect(`Annotated Term`, "satellite cell activation")~"positive",TRUE ~ "Other")) %>% rename(ext_gene=Symbol)
+
+#%>% filter(list1=="positive")
+
+
+SKMH3mm7 <- readr::read_tsv("/home/guestA/n70275b/work/tissuechil/tisuues/skmuscle_markers.txt") # 43個
+
+#SCs_suplist <- c("Acvr2a","Cav1","Cd34","Cdh15","Cxcl12","Cxcr4","Des","Egfr","Foxk1","Hoxc10","Itga4","Itga7","Itgb1","Lbx1","Met","Myod1","Ncam1","Ngfr","Pax7","Sdc3","Sdc4","Sox9","Vcam1","Me1","Vps72","Tceal5","Hnrnpa2b1","0610012G03Rik","Sgk1","Hdac5","Zcrb1","Gpc1","Cbfb","Gpx1","Wdr26","Mff","Cd63","Col1a1","Tspan9","Atp5b","Tnnc2","Ndufc2","Nfib","Hbb-bs","Sf1","Tns1","Hrc","Smox","Ech1","Actc1","Krtcap2","Sbk2") # 52個
+# かぶりは２３個
+
+
+############
+## Fig1より
+AQSC_list <- c("Cxcl12","Cav1","Egfr","Cd34","Vcam1","Megf10","Msx1","S1pr1","Ncam1","Sox9")
+#e2g %>% filter(ext_gene %in% AQSC_list)
+ASC_list <- c("Sdc3","Cxcr4","Nes","Ndn","Myf5","Itgb1","Adgrg3","Myod1","Sox8","Erbb2","Nrn1") #"Sdc3","Cxcr4","Nes","Ndn","Myf5",
+#e2g %>% filter(ext_gene %in% ASC_list)
+QSC_list <- c("Pax7","Sdc4","Bdnf","Ngfr","Calcr","Cdh15","Pax3","Cadm1") #ADD "Bdnf","Calcr","Pax3","Cadm1" OK plus 2
+#e2g %>% filter(ext_gene %in% QSC_list)
+MF_list <- c("Acvr2a","Des","Foxk1","Hoxc10","Itga4","Itga7","Lbx1","Met","Erbb3","Erbb4","Mstn") #ADD "Erbb4""Erbb3""Mstn" OK plus 8
+#e2g %>% filter(ext_gene %in% MF_list)
+############
+
+markerSCs <- e2g %>% filter(ens_gene %in% SKMH3mm7$gene_id)  %>% mutate(clus=case_when(ext_gene %in% AQSC_list ~"ASC",ext_gene %in% ASC_list ~"ASC",ext_gene %in% QSC_list ~"QSC",ext_gene %in% MF_list ~"MF",TRUE ~ "other")) %>% mutate(List=factor(clus, c("ASC","QSC","MF","other"))) %>% filter(clus %in% c("ASC","QSC","MF"))
+
+#markerSCs <- e2g %>% filter(ens_gene %in% SKMH3mm7$gene_id)  %>% mutate(clus=case_when(ext_gene %in% AQSC_list ~"ASC_QSC",ext_gene %in% QSC_list ~"QSC",ext_gene %in% ASC_list ~"ASC",ext_gene %in% MF_list ~"MF",TRUE ~ "other")) %>% mutate(List=factor(clus, c("ASC","QSC","ASC_QSC","MF","other"))) %>% filter(clus %in% c("ASC","QSC","ASC_QSC"))
+
+#%>% mutate(clus=case_when(List %in% c("ASC","QSC","ASC_QSC") ~"SC",List %in% c("MF") ~"MF",List %in% c("SKM") ~"SKM",TRUE ~ ""))
+
+markerSCs %>% group_by(clus) %>% summarise(count=n(),  gene=paste(ext_gene,collapse = ", "))
+
+markerSCs %>% readr::write_csv("./SCsmakerlist_inMAplot.csv")
+
+#marker_MA <- markerSCs %>% filter(List %in% c("ASC","QSC","ASC_QSC"))
+#marker_MA <- e2g %>% filter(ext_gene %in% MGIGO$ext_gene)
+#marker_MA <- e2g %>% filter(ext_gene %in% c("Capn3","Sox15"))
+#marker_MA <- e2g %>% filter(ext_gene %in% SCs_suplist)
+
+
+#marker_MA <- e2g %>% filter(ext_gene %in% MGISC_gene$ext_gene) %>% left_join(MGISC_gene)
+marker_MA <- e2g %>% filter(ext_gene %in% markerSCs$ext_gene) %>% left_join(markerSCs)
+
+
+```
+
+```{r maplot draw, fig.width = 7, fig.height = 8}
+
+#f_SCs <- function(x) x %>% filter(ext_gene %in% SCs_list) #作図用
+#fc %>% f_SCs
+
+#f_MF <- function(x) x %>% filter(ext_gene %in% MF_list) #作図用
+#fc %>% f_MF
+
+#re_all_plot <- re_all %>% mutate(cluster=case_when(ext_gene %in% SCs_list~"SC",ext_gene %in% MF_list~"MF",TRUE ~ "FALSE")) %>% mutate(label_text=case_when(ext_gene %in% ASCs_list ~ ext_gene,TRUE ~ ""))  %>% mutate(cluster=factor(cluster, c("SC","MF","FALSE")))
+
+#f_markerMA_in <- function(x) x %>% filter(ens_gene %in% marker_MA$ens_gene)
+
+#f_markerMA_in <- function(x) x %>% filter(ens_gene %in% marker_MA$ens_gene) %>% left_join(marker_MA)
+#f_markerMA_in_ASCs <- function(x) x %>% filter(ens_gene %in% marker_MA$ens_gene) %>% left_join(marker_MA) %>% filter(cluster %in% c("ASC"))
+#f_markerMA_out <- function(x) x %>% filter(!ens_gene %in% marker_MA$ens_gene)
+
+
+f_markerMA_in <- function(x) x %>% filter(ens_gene %in% marker_MA$ens_gene)
+f_markerMA_in_ASCs <- function(x) x %>% filter(ens_gene %in% marker_MA$ens_gene) %>% left_join(marker_MA) %>% filter(cluster %in% c("ASC"))
+f_markerMA_out <- function(x) x %>% filter(!ens_gene %in% marker_MA$ens_gene)
+
+#re_all_plot <- re_all %>% mutate(cluster=case_when(ens_gene %in% marker_MA$ens_gene~"marker",TRUE ~ "FALSE")) %>% mutate(label_text=case_when(ext_gene %in% marker_MA$ext_gene ~ ext_gene,TRUE ~ ""))%>% mutate(cluster=factor(cluster, c("marker","FALSE")))
+
+
+#re_all_plot <- re_all %>% left_join(marker_MA) %>% mutate(cluster=case_when(!is.na(list1)~list1,TRUE ~ "FALSE")) %>% mutate(label_text=case_when(ext_gene %in% marker_MA$ext_gene ~ ext_gene,TRUE ~ "")) %>%  mutate(cluster=factor(cluster, c("positive","Other","negative")))
+
+re_all_plot <- re_all %>% left_join(marker_MA) %>% mutate(cluster=case_when(!is.na(clus)~clus,TRUE ~ "FALSE"))  %>% mutate(label_text=case_when(ext_gene %in% AQSC_list ~ ext_gene, ext_gene %in% ASC_list ~ ext_gene,ext_gene %in% QSC_list ~ext_gene, TRUE ~ ""))  %>% mutate(cluster=factor(cluster, c("ASC","QSC","MF","FALSE")))
+
+#%>%  mutate(cluster=factor(cluster, c("SC","MF","SKM")))
+
+
+
+####
+re_select_plot <- re_all_plot %>% filter(aspect!="Intercept") %>% mutate(Day=case_when(aspect=="group1_SKM_Day0_H3mm18KO_vs_WT"~"Day0",aspect=="group1_CTX_Day5_H3mm18KO_vs_WT"~"Day5",aspect=="group1_CTX_Day14_H3mm18KO_vs_WT"~"Day14",TRUE ~ "FALSE"))  %>% left_join(notm_plotlist_beforecutoff)  %>% mutate(Day=factor(Day, c("Day0","Day5","Day14"))) 
+
+Daymean <- re_select_plot %>% group_by(Day) %>% summarise(DayMean=mean(groupMean))
+Mean_color <- "#B8860B"
+
+Daymean
+
+Allgene_num <- re_select_plot %>% dplyr::select(ens_gene) %>% unique() %>% nrow()
+marker_num <- re_select_plot %>% f_markerMA_in %>% dplyr::select(ens_gene) %>% unique() %>% nrow()
+marker_num_sum <- re_select_plot %>% f_markerMA_in %>% dplyr::select(ens_gene,ext_gene,cluster) %>% unique() %>% group_by(cluster) %>% summarise(count=n())
+
+
+gggglabel <- paste(Allgene_num, "genes,", marker_num,"marker genes (",marker_num_sum$cluster[1],marker_num_sum$count[1],marker_num_sum$cluster[2],marker_num_sum$count[2],marker_num_sum$cluster[3],marker_num_sum$count[3],")",sep=" ")
+
+
+
+re_select_plot %>% f_markerMA_in %>% dplyr::select(ens_gene,ext_gene,cluster) %>% unique() %>% arrange(cluster)
+re_select_plot %>% f_markerMA_in %>% dplyr::select(ens_gene,ext_gene,cluster) %>% unique() %>% arrange(cluster) %>% readr::write_csv("./Dayall_MAplot_SKMlist.csv")
+
+re_select_plot %>% readr::write_csv("./Dayall_MAplotdata.csv")
+
+########
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange,color=cluster))+geom_point(size=0.1, alpha = 0.5,data=f_markerMA_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  +geom_point(aes(groupMean,log2FoldChange,color=cluster),size=0.3, data=f_markerMA_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + scale_color_manual(values = c("#ff0000","#0000ff","#000000")) + facet_wrap(~Day,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8))
+
+
+#,panel.grid=element_blank()
+
+ggsave(file="DayAll_MAplot.pdf", plot = ggmaplot, width = 7, height = 8, dpi = 120)
+plot(ggmaplot)
+
+########
+
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange,color=cluster))+geom_point(size=0.1, alpha = 0.5,data=f_markerMA_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange,color=cluster),size=0.3, data=f_markerMA_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + scale_color_manual(values = c("#ff0000","#0000ff","#000000")) + facet_wrap(~Day,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8))
+
+ggsave(file="DayAll_MAplot_Mean.pdf", plot = ggmaplot, width = 7, height = 8, dpi = 120)
+plot(ggmaplot)
+
+
+```
+
+
+```{r llllll all, fig.width = 4, fig.height = 8}
+
+density_color_low <- "#FFFFFF"
+density_color_high <- "blue"
+density_color_high <- "#FFD400"
+
+
+
+#density_color_high <- "gray"
+
+#DAA520
+
+#Mean_groupmean <- mean(re_select_plot$groupMean)
+#Mean_log2FC <- mean(re_select_plot$log2FoldChange)
+
+ffff <- re_select_plot  %>% mutate(Day=factor(Day, c("Day0","Day5","Day14")))  %>%  ggplot(aes(x=groupMean,y=log2FoldChange))  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE)+ scale_fill_gradient(low = density_color_low, high = density_color_high) + scale_x_log10(breaks=10^(-1:4),limits= c(0.1, 10000))  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") + geom_density2d(color="#ff0000",data=f_markerMA_in_ASCs,size=0.1, bins=7) +geom_point(aes(groupMean,log2FoldChange,color=cluster),size=1.0, data=f_markerMA_in_ASCs) + ylim(-1,1) + facet_wrap(~Day, ncol = 1) + theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank())  + scale_color_manual(values = c("#ff0000","#0000ff","#000000"))
+
+
+ffff
+ggsave(file="DayAll_densityMAplot_ASC.pdf", plot = ffff, width = 4, height = 8, dpi = 120)
+
+ffff <- re_select_plot  %>% mutate(Day=factor(Day, c("Day0","Day5","Day14")))  %>%  ggplot(aes(x=groupMean,y=log2FoldChange))  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE)+ scale_fill_gradient(low = density_color_low, high = density_color_high) + scale_x_log10(breaks=10^(-1:4),limits= c(0.1, 10000))  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") + geom_density2d(color="#ff0000",data=f_markerMA_in_ASCs,size=0.1, bins=7) +geom_point(aes(groupMean,log2FoldChange,color=cluster),size=1.0, data=f_markerMA_in) + ylim(-1,1) + facet_wrap(~Day, ncol = 1) + theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank())  + scale_color_manual(values = c("#ff0000","#0000ff","#000000"))
+
+ffff
+ggsave(file="DayAll_densityMAplot_SCs.pdf", plot = ffff, width = 4, height = 8, dpi = 120)
+
+
+```
+
+```{r density ASCs vs all}
+
+ffff <- re_select_plot %>% mutate(Day=factor(Day, c("Day0","Day5","Day14")))  %>%  ggplot(aes(x=groupMean,y=log2FoldChange)) + scale_fill_gradient(low = density_color_low, high = density_color_high) + scale_color_gradient(low = "#000000", high = "#ff0000") + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) + geom_density2d(aes(color=..level..),data=f_markerMA_in_ASCs,size=0.1, bins=7) + scale_x_log10(breaks=10^(-1:4),limits= c(0.1, 10000))  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") + ylim(-1,1) + facet_wrap(~Day, ncol = 1) + theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank())  +geom_point(aes(groupMean,log2FoldChange),size=1.0, data=f_markerMA_in_ASCs)
+
+ffff
+ggsave(file="DayAll_densityMAplot_ASCplotvsAll.pdf", plot = ffff, width = 4, height = 8, dpi = 120)
+
+
+```
+
+
+
+
+
+
+
+```{r llllll all title on, fig.width = 6, fig.height = 12}
+
+
+
+
+ffff <- re_select_plot  %>% mutate(Day=factor(Day, c("Day0","Day5","Day14")))  %>%  ggplot(aes(x=groupMean,y=log2FoldChange))  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE)+ scale_fill_gradient(low = density_color_low, high = density_color_high) + scale_x_log10()  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") + geom_density2d(color="#ff0000",data=f_markerMA_in_ASCs,size=0.1, bins=7) +geom_point(aes(groupMean,log2FoldChange,color=cluster),size=1.0, data=f_markerMA_in) + ylim(-1,1) + facet_wrap(~Day, ncol = 1) + theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank())  + scale_color_manual(values = c("#ff0000","#0000ff","#000000")) + geom_text_repel(aes(label = label_text), segment.color = "#000000", segment.size = 0.1) 
+
+
+ffff
+ggsave(file="DayAll_densityMAplot_SCs_title.pdf", plot = ffff, width = 6, height = 12, dpi = 120)
+
+```
+
+mkde2d <- MASS::kde2d(re_select_plot$groupMean,re_select_plot$log2FoldChange,lims = c(c(0.1, 10000), range(-1,1)))
+
+
+-----------
+
+## notm_plotlist_cutoff 10.0 を クラスタリング
+191204作成
+以前のものを修正して作成
+
+#### 4つのクラスターに分ける (with Day0, Day5, Day14, SKM & CTXのみ, kmeans)
+
+## Clustering (all genes)
+
+clustering H3.3
+
+```{r clustering cuff off genes kemans, fig.width=10,fig.height=4}
+#20191205修正と作成
+
+def_list_select <- def %>% filter(sample %in% sort_mouse)
+
+cluster_number <- 4
+
+csvfilepath <- "BRB0438re_noumi_190515-H3mm18KO_CTX"
+
+
+##--------- clustering -----------#
+set.seed(3)
+
+# H3.3で
+ 
+zscore_BRB_s <- zscore_type %>% dplyr::select("ens_gene",all_of(def_list_select$sample))  %>% filter(across(where(is_double), ~ (.x != 0)|(.x == 0))) %>% filter(ens_gene %in% notm_plotlist_cutoff$ens_gene)
+#zscore_BRB_s <- zscore_H3p3 %>% filter(across(where(is_double), ~ (.x != 0)|(.x == 0)))
+
+nrow(zscore_type)
+nrow(zscore_BRB_s)
+
+Xs_clus <- zscore_BRB_s %>% dplyr::select(-ens_gene) %>% as.matrix()
+rownames(Xs_clus) <- zscore_BRB_s$ens_gene
+
+km_allcutoff <- kmeans(Xs_clus,cluster_number,nstart = 25,algorithm = "Lloyd")
+kmc_allcutoff <- km_allcutoff$centers %>% as_tibble(rownames="cluster") %>% gather(sample,val,-cluster) %>% inner_join(def_list_select)
+
+kmc_allcutoff_group <- kmc_allcutoff
+
+#kmc_LRT_group <- kmc_LRT %>% mutate(growth=factor(growth, c("UI","Diff0h","Diff24h","Diff48h"))) %>% mutate(type=factor(type, c("Doxplus","Doxminus")))
+
+#kmc_LRT_group <- kmc_LRT_group %>% mutate(time=case_when(growth=="UI" ~"UI",growth=="Diff0h"~"0h",growth=="Diff24h"~"24h",growth=="Diff48h"~"48h",TRUE~"error"))
+#kmc_LRT_group <- kmc_LRT_group %>% mutate(time=factor(time, c("UI","0h","24h","48h")))
+
+#gggglabel <- paste("k-means: Total",nrow(Xs_H3p3),"[1]",km_allcutoff$size[1],"[2]",km_allcutoff$size[2],"[3]",km_allcutoff$size[3],"[4]",km_allcutoff$size[4],"[5]",km_allcutoff$size[5],"[6]",km_allcutoff$size[6],sep=" ")
+
+gggglabel <- paste("Original",nrow(zscore_type),"k-means: Total",nrow(zscore_BRB_s),"[1]",km_allcutoff$size[1],"[2]",km_allcutoff$size[2],"[3]",km_allcutoff$size[3],"[4]",km_allcutoff$size[4],sep=" ")
+
+
+#gggglabel <- paste("Original",nrow(zscore_type),"k-means: Total",nrow(zscore_BRB_s),"[1]",km_allcutoff$size[1],"[2]",km_allcutoff$size[2],"[3]",km_allcutoff$size[3],"[4]",km_allcutoff$size[4],"[5]",km_allcutoff$size[5],"[6]",km_allcutoff$size[6],sep=" ")
+
+#------- size -------#
+
+print(km_allcutoff$size) 
+
+rrres_allcutoff <- km_allcutoff$cluster %>% tibble(ens_gene=names(.),cluster=.) %>% left_join(.,zscore_type) %>% arrange(cluster) %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster,all_of(def_list_select$sample))
+
+file_path <- paste("./Clustering_cutoff/", csvfilepath, "_kmeans_cluster.csv",sep="") 
+readr::write_csv(rrres_allcutoff,file_path)
+
+##------- PCA -------#
+
+pcacluster_save <- prcomp(Xs_clus)$x %>% as_tibble %>% dplyr::select(PC1,PC2) %>% mutate(cluster=km_allcutoff$cluster) %>% ggplot(aes(PC1,PC2,colour=factor(cluster)))+geom_point(size=1.5,alpha=0.6)+coord_fixed()+theme_linedraw()+ggsci::scale_color_d3("category20")
+
+file_path <- paste("./Clustering_cutoff/", csvfilepath, "_kmeans__pcacluster_PC1PC2.pdf",sep="") 
+ggsave(plot=pcacluster_save,file=file_path, width = 10, height = 6, dpi = 120)
+print(pcacluster_save)
+
+pcacluster_save <- prcomp(Xs_clus)$x %>% as_tibble %>% dplyr::select(PC1,PC3) %>% mutate(cluster=km_allcutoff$cluster) %>% ggplot(aes(PC1,PC3,colour=factor(cluster)))+geom_point(size=1.5,alpha=0.6)+coord_fixed()+theme_linedraw()+ggsci::scale_color_d3("category20")
+
+file_path <- paste("./Clustering_cutoff/", csvfilepath, "_kmeans__pcacluster_PC1PC3.pdf",sep="") 
+ggsave(plot=pcacluster_save,file=file_path, width = 10, height = 6, dpi = 120)
+print(pcacluster_save)
+
+
+#================================================#
+
+
+#================================================#
+# CTXとSKMの色を分けてプロット (20191204 ver)
+kmc_allcutoff_group_newgroup <- kmc_allcutoff_group %>% mutate(WT_KO=factor(WT_KO, c("H3mm18KO","WT"))) %>% mutate(Day=factor(Day, c("Day0","Day5","Day14"))) %>% mutate(intact_CTX=factor(intact_CTX, c("CTX","SKM")))
+kmc_allcutoff_group_newgroup <- kmc_allcutoff_group_newgroup %>% mutate(group_new=paste(WT_KO,intact_CTX,Day,sep="_")) %>% mutate(type_new=paste(WT_KO,intact_CTX,sep="_"))
+kmc_allcutoff_group_newgroup <- kmc_allcutoff_group_newgroup %>% mutate(type_new=factor(type_new, c("WT_CTX","H3mm18KO_CTX","WT_SKM","H3mm18KO_SKM")))
+
+#------------------#
+f_cluster <- function(x) x %>% group_by(group_new,type_new,Day,cluster) %>% summarise(avg=mean(val),se=sd(val)/sqrt(length(val))) %>% ungroup()
+print(kmc_allcutoff_group_newgroup %>% group_by(group_new,type_new,Day) %>% summarise())
+#-------#
+
+#================================================#
+
+#================================================#
+# SKM(day0)もCTXと同じ色でプロット (20191204 ver)
+
+#------------------#
+f_cluster2 <- function(x) x %>% group_by(group_new, WT_KO, Day, cluster) %>% summarise(avg=mean(val),se=sd(val)/sqrt(length(val))) %>% ungroup()
+print(kmc_allcutoff_group_newgroup %>% group_by(group_new, WT_KO, Day) %>% summarise())
+#-------#
+
+#================================================#
+
+#===============================#
+## SKM と CTX の色を分けて表示
+# strip.text.x = element_text(size=24,face="italic")
+
+cluster_save <- kmc_allcutoff_group_newgroup %>% ggplot(aes(Day,val,group=type_new,colour=type_new))+geom_line(size=1,aes(x=Day,y=avg,colour=type_new),data=f_cluster)+geom_point(size=2)+facet_wrap(~cluster,1) +theme_bw() + theme(axis.text=element_text(hjust = 1, size=20), axis.text.x = element_text(angle = 45, hjust = 1), axis.title=element_text(size=20),axis.title.x = element_blank(), legend.title=element_text(size=20), legend.text = element_text(size=20), strip.background = element_blank(), strip.text.x = element_text(size=24), legend.position = "top",  plot.title=element_text(size=10)) +ggsci::scale_color_npg() + ggtitle(gggglabel)
+
+ggsave(plot=cluster_save,file="./Clustering_cutoff/BRB0438re_DEG_day5_2gunfdr0p2_ctxskm_kmeans4__cluster_type1__final_fin200523.pdf", width = 12, height = 4.5,  dpi = 120)
+print(cluster_save)
+#------------------#
+
+cluster_save <- kmc_allcutoff_group_newgroup %>% ggplot(aes(Day,val,group=type_new,colour=type_new)) + geom_abline(intercept=0,slope=0,linetype="dashed",colour="gray") + geom_line(size=1,aes(x=Day,y=avg,colour=type_new),data=f_cluster)+geom_point(size=2)+facet_wrap(~cluster,1) +theme_bw() + theme(axis.text=element_text(hjust = 1, size=20), axis.text.x = element_text(angle = 45, hjust = 1), axis.title=element_text(size=20),axis.title.x = element_blank(), legend.title=element_text(size=20), legend.text = element_text(size=20), strip.background = element_blank(), strip.text.x = element_text(size=24), legend.position = "top",  plot.title=element_text(size=10)) +ggsci::scale_color_npg() + ggtitle(gggglabel)
+
+ggsave(plot=cluster_save,file="./Clustering_cutoff/BRB0438re_DEG_day5_2gunfdr0p2_ctxskm_kmeans4__cluster_type1__final_dash_fin200523.pdf", width = 12, height = 4.5, dpi = 120)
+print(cluster_save)
+#------------------#
+
+#===============================#
+## SKMもCTXと同じ色で表示
+# strip.text.x = element_text(size=24,face="italic")
+
+cluster_save <- kmc_allcutoff_group_newgroup %>% ggplot(aes(Day,val,group=WT_KO,colour=WT_KO))+geom_line(size=1,aes(x=Day,y=avg,colour=WT_KO),data=f_cluster2)+geom_point(size=2)+facet_wrap(~cluster,1) +theme_bw() + theme(axis.text=element_text(hjust = 1, size=20), axis.text.x = element_text(angle = 45, hjust = 1), axis.title=element_text(size=20),axis.title.x = element_blank(), legend.title=element_text(size=20), legend.text = element_text(size=20), strip.background = element_blank(), strip.text.x = element_text(size=24), legend.position = "top",  plot.title=element_text(size=10)) +ggsci::scale_color_npg() + ggtitle(gggglabel)
+
+ggsave(plot=cluster_save,file="./Clustering_cutoff/BRB0438re_DEG_day5_2gunfdr0p2_ctxskm_kmeans4__cluster_type2__final_fin200523.pdf", width = 12, height = 4.5,  dpi = 120)
+print(cluster_save)
+#------------------#
+
+cluster_save <- kmc_allcutoff_group_newgroup %>% ggplot(aes(Day,val,group=WT_KO,colour=WT_KO)) + geom_abline(intercept=0,slope=0,linetype="dashed",colour="gray") +geom_line(size=1,aes(x=Day,y=avg,colour=WT_KO),data=f_cluster2)+geom_point(size=2)+facet_wrap(~cluster,1) +theme_bw() + theme(axis.text=element_text(hjust = 1, size=20), axis.text.x = element_text(angle = 45, hjust = 1), axis.title=element_text(size=20),axis.title.x = element_blank(), legend.title=element_text(size=20), legend.text = element_text(size=20), strip.background = element_blank(), strip.text.x = element_text(size=24), legend.position = "top",  plot.title=element_text(size=10)) +ggsci::scale_color_npg() + ggtitle(gggglabel)
+
+ggsave(plot=cluster_save,file="./Clustering_cutoff/BRB0438re_DEG_day5_2gunfdr0p2_ctxskm_kmeans4__cluster_type2__final_dash_fin200523.pdf", width = 12, height = 4.5,  dpi = 120)
+print(cluster_save)
+#------------------#
+
+```
+
+
+```{r seq cuff off genes kemans cluster}
+z_cutoffclus1 <- rrres_allcutoff %>% filter(cluster=="1") %>% dplyr::rename(cutoffclus=cluster)
+z_cutoffclus2 <- rrres_allcutoff %>% filter(cluster=="2") %>% dplyr::rename(cutoffclus=cluster)
+z_cutoffclus3 <- rrres_allcutoff %>% filter(cluster=="3") %>% dplyr::rename(cutoffclus=cluster)
+z_cutoffclus4 <- rrres_allcutoff %>% filter(cluster=="4") %>% dplyr::rename(cutoffclus=cluster)
+#z_cutoffclus5 <- rrres_allcutoff %>% filter(cluster=="5") %>% dplyr::rename(cutoffclus=cluster)
+#z_cutoffclus6 <- rrres_allcutoff %>% filter(cluster=="6") %>% dplyr::rename(cutoffclus=cluster)
+
+nrow(rrres_allcutoff)
+nrow(z_cutoffclus1)
+nrow(z_cutoffclus2)
+nrow(z_cutoffclus3)
+nrow(z_cutoffclus4)
+#nrow(z_cutoffclus5)
+#nrow(z_cutoffclus6)
+nrow(rrres_allcutoff %>% filter(is.na(cluster)))
+
+```
+
+```{r cutoff cluster in SC list}
+
+rrres_allcutoff %>% filter(ens_gene %in% markerSCs$ens_gene) %>% left_join(markerSCs)  %>% group_by(cluster,clus) %>% summarise(count=n(), list=paste(ext_gene,collapse = ", "))
+
+rrres_allcutoff %>% filter(ens_gene %in% markerSCs$ens_gene) %>% left_join(markerSCs)  %>% filter(ens_gene %in% fc$ens_gene) %>% group_by(cluster,clus) %>% summarise(count=n(), list=paste(ext_gene,collapse = ", "))
+
+rrres_allcutoff %>% filter(ext_gene %in% c("Myh3","Ckm","Acta1","Tnnt2","Actb","Csrp3","Tpm2","Nsdhl","Myog","Ttn")) %>% group_by(cluster) %>% summarise(count=n(), list=paste(ext_gene,collapse = ", "))
+
+#rrres_allcutoff %>% filter(ens_gene %in% fc$ens_gene) %>% group_by(cluster) %>% summarise(count=n(), list=paste(ext_gene,collapse = ", ")) #DEG<Day5>の遺伝子の数
+
+rrres_allcutoff %>% filter(ens_gene %in% markerSCs$ens_gene) %>% left_join(markerSCs)  %>% group_by(cluster,clus) %>% summarise(count=n(), list=paste(ext_gene,collapse = ", ")) %>% readr::write_csv("./Clustering_cutoff/H3mm7fig1list.csv")
+
+rrres_allcutoff %>% filter(ext_gene %in% c("Myh3","Ckm","Acta1","Tnnt2","Actb","Csrp3","Tpm2","Nsdhl","Myog","Ttn")) %>% group_by(cluster) %>% summarise(count=n(), list=paste(ext_gene,collapse = ", "))  %>% readr::write_csv("./Clustering_cutoff/Myogeniclist.csv")
+
+
+
+```
+
+
+#### クラスタリング (cutoff cluster ASCs) の結果をGO
+
+ASCsをクラスター毎にGO
+
+2020.4.21, 7.17修正, 8.4修正　ver
+
+```{r GO part1 Load list cutoff cluster}
+#20200421修正 ver
+#20191206修正 ver
+
+#z_heat_label_order_cluster6 <- z_heat_label_order_cluster %>% dplyr::select(ext_gene,heatmap_order,No,cluster_6) %>% mutate(heatmap_order=as.integer(heatmap_order),No=as.integer(No),cluster_6=as.integer(cluster_6))%>% arrange(heatmap_order) %>% left_join( dplyr::select(z_timedeg_s,ens_gene,ext_gene,biotype,chr))
+#_____________#
+
+## z_heat_label_order_cluster にクラスター番号が入っている
+
+
+
+#table_degcluster <- rrres_allcutoff  %>% f_ASCs %>% filter(!is.na(cluster)) %>% arrange(cluster, ens_gene) %>% unique() %>% filter(!is.na(ens_gene))
+
+table_degcluster <- rrres_allcutoff   %>% filter(ens_gene %in% markerSCs$ens_gene) %>% filter(!is.na(cluster)) %>% arrange(cluster, ens_gene) %>% unique() %>% filter(!is.na(ens_gene))
+
+degclusgene <- table_degcluster %>% group_by(cluster) %>% summarise(size=n()) %>% mutate(cluster=row_number())
+
+table_degcluster <- table_degcluster %>% left_join(degclusgene %>% dplyr::select(cluster)) %>% arrange(cluster,ens_gene)
+
+degclusgene
+##### FDR setting ######
+gofdr <- 0.1
+
+#cluster_num <- 6
+cluster_num <- nrow(degclusgene)
+
+```
+
+```{r go part2 clusterProfile cutoff cluster}
+# 20191206修正
+
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+folder_path <- "./Clustering_cutoff/clusterProfile/"
+
+#-------------#
+file_path <- paste(folder_path, "GO_cutoffcluster_SKMmarker_BPfdr0p1_generatio",sep="")
+#file_path <- paste(folder_path, "GO_cutoffcluster_ASCs_BPfdr0p1_generatio",sep="")
+filename_csv <- file_path
+
+file_path <- paste(folder_path, "GO_cutoffcluster_SKMmarker_BPfdr0p1_generatio_cluster",sep="")
+#file_path <- paste(folder_path, "GO_cutoffcluster_ASCs_BPfdr0p1_generatio_cluster",sep="")
+filename_list <- file_path
+
+print(filename_list)
+print(filename_csv)
+
+#例 filename_list <- "./LRT/clusterProfile/H3mm18KO_mouseCTX_BRB0438_day5_2gunfdr0p2_kmeans_BPfdr0p1_generatio_cluster"
+#例 filename_csv <- "./LRT/clusterProfile/H3mm18KO_mouseCTX_BRB0438_day5_2gunfdr0p2_kemans_BPfdr0p1_generatio"
+#-------------#
+
+cluster_list <- as.list(NA) #初期化
+
+for (i in 1:cluster_num) {
+   pre_list <- as.list(NA)
+   pre_list <- table_degcluster %>% filter(cluster==as.integer(i)) %>% dplyr::select(ens_gene) %>% as.list()
+   names(pre_list) <- paste("ENSEMBL",as.character(i),sep="_")
+ 
+   if (i == 1) { 
+     cluster_list <- pre_list
+   } 
+   else cluster_list <- c(cluster_list, pre_list) 
+}
+
+
+for (i in 1:cluster_num) {
+   print(paste(i, cluster_list[[i]] %>% tibble::enframe(name = NULL) %>% nrow(), sep=", "))
+  
+   pre_ego_BP <- enrichGO(gene = cluster_list[[i]],
+                 OrgDb = "org.Mm.eg.db",
+                 keyType = 'ENSEMBL',
+                 ont = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = gofdr, qvalueCutoff  = 1.0) 
+   
+   #20191211修正  pvalueCutoff  = fdr
+   
+   ## pvalue < qvalue < p.adjust ##
+   # qvalueCutoff  = 0.3  qvalueCutoff  = 0.2 , qvalueCutoff  = 1.0
+
+   #if (i == 1) { 
+  #   table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster=as.integer(i))
+  #   # リスト型からデータフレームへ変換
+   #} 
+   #else table_ego_BP <- table_ego_BP %>% bind_rows(data.frame(pre_ego_BP) %>% mutate(cluster=as.integer(i)))
+                                                  
+  if (i == 1) { 
+     table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster=paste("cluster",as.character(i),sep=""))  # リスト型からデータフレームへ変換
+   } 
+   else table_ego_BP <- table_ego_BP %>% bind_rows(data.frame(pre_ego_BP) %>% mutate(cluster=paste("cluster",as.character(i),sep="")))
+   
+   #---- plot ---#
+   #BPplot <- dotplot(pre_ego_BP, showCategory=30, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   #print(BPplot)
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),".png",sep=""), width = 12, height = 12, dpi = 120)
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),".pdf",sep=""), width = 12, height = 12, dpi = 120)
+}
+
+print(table_ego_BP %>% group_by(cluster) %>% summarise())
+
+#------#
+# データはtable_ego_BPに。
+
+#------------------------------------------------------#
+# テーブルを保存
+# table_ego_BP_3t3_LRT2 <- table_ego_BP
+#
+table_ego_BP1 <- table_ego_BP %>% mutate(cluster=factor(cluster,c("cluster1","cluster2","cluster3","cluster4"))) %>% arrange(cluster,desc(Count)) #191106(200415), 200831 修正 
+
+#table_ego_BP1 <- table_ego_BP %>% arrange(cluster,desc(Count))  %>% left_join(dplyr::select(degclusgene, cluster)) #191106(200415)
+
+readr::write_csv(table_ego_BP1,paste(filename_csv,".csv",sep=""))
+
+```
+
+```{r go part2-2 clusterProfile cutoff cluster}
+
+table_ego_BP1 %>% group_by(cluster) %>% summarise(GOterm_count=n())
+
+# 先のテーブルのgeneIDをgene nameに置換する。(20191025)
+
+tablego <- table_ego_BP1 %>% mutate(gene_name=geneID) %>% dplyr::select(-(qvalue))
+
+for (i in 1:nrow(table_degcluster)) {
+  tablego <- tablego %>% mutate(gene_name=gsub(gene_name, pattern=table_degcluster$ens_gene[i], replacement=table_degcluster$ext_gene[i], ignore.case = TRUE))
+}
+
+#print(tablego)
+
+#readr::write_csv(tablego,paste(filename_csv,"_genename.csv",sep=""))
+
+#------------------------------------------------------#
+
+
+```
+
+
+```{r GO save}
+
+readr::write_csv(tablego,paste(filename_csv,"_genename.csv",sep=""))
+
+```
+
+SKM marker
+
+```{r normcount fig error var & boxplot 190722-1203 SKMs}
+
+#======== Change every data ここで順番を変更 ========#
+
+tbl <- norm_plotlist_all %>%  filter(ens_gene %in% table_degcluster$ens_gene) %>% annotate()  %>% mutate(ext_gene=factor(ext_gene,table_degcluster$ext_gene)) 
+
+#tbl2 <- norm_plotlist_all  %>% inner_join(e2g, by = "ens_gene") %>% filter(ext_gene %in% c("Acta1","Tpm2"))
+
+#====================================================#
+
+f_gene_norm <- function(x) x %>% group_by(WT_KO,Day,intact_CTX,ens_gene,ext_gene) %>% summarise(avg=mean(normalized),se=sd(normalized)/sqrt(length(normalized))) %>% ungroup()
+
+#----#
+tbl %>% group_by(WT_KO,Day,intact_CTX) %>% summarise()
+#----#
+
+#face="italic"
+
+### point ###
+gggggpp <-ggplot(tbl,aes(Day,normalized,colour=WT_KO,group=WT_KO))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",ncol=9)+geom_line(size=1.0, aes(x=Day,y=avg,colour=WT_KO),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(angle = 45, hjust = 1), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()
+ggsave(file="./Clustering_cutoff/clusterProfile/normCount_SKMmarker.pdf", plot = gggggpp, width=22, height=10, limitsize = FALSE)
+#print(gggggpp)
+
+
+
+```
+
+```{r normcount fig error var & boxplot 190722-1203 myo}
+
+#======== Change every data ここで順番を変更 ========#
+
+tbl <- norm_plotlist_all  %>% annotate() %>%  filter(ext_gene %in% c("Myh3","Ckm","Acta1","Tnnt2","Actb","Csrp3","Tpm2","Nsdhl","Myog","Ttn")) 
+#tbl2 <- norm_plotlist_all  %>% inner_join(e2g, by = "ens_gene") %>% filter(ext_gene %in% c("Acta1","Tpm2"))
+
+#====================================================#
+
+f_gene_norm <- function(x) x %>% group_by(WT_KO,Day,intact_CTX,ens_gene,ext_gene) %>% summarise(avg=mean(normalized),se=sd(normalized)/sqrt(length(normalized))) %>% ungroup()
+
+#----#
+tbl %>% group_by(WT_KO,Day,intact_CTX) %>% summarise()
+#----#
+
+#face="italic"
+
+### point ###
+gggggpp <-ggplot(tbl,aes(Day,normalized,colour=WT_KO,group=WT_KO))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",ncol=5)+geom_line(size=1.0, aes(x=Day,y=avg,colour=WT_KO),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(angle = 45, hjust = 1), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()
+ggsave(file="./Clustering_cutoff/clusterProfile/normCount_Myo.pdf", plot = gggggpp, width=10, height=6, limitsize = FALSE)
+#print(gggggpp)
+
+#+geom_smooth(se=FALSE)
+
+```
+
+ここまで (20200807)
+
+
+
+#### 2群 の結果をGO
+
+2020.4.21, 7.17修正, 8.4修正, 8.31修正ver
+
+```{r GO part2-1 Load list cutoff cluster}
+
+
+resUpDown <- re %>% filter(aspect=="group1_CTX_Day5_H3mm18KO_vs_WT") %>% mutate(Cluster_updown=case_when(log2FoldChange >0 ~ "Up", log2FoldChange<0 ~ "Down"),cluster=case_when(log2FoldChange >0 ~ as.integer("1"), log2FoldChange<0 ~ as.integer("2")))
+resUpDown %>% group_by(aspect, Cluster_updown, cluster) %>% summarise(n())
+
+table_degcluster <- resUpDown %>% arrange(cluster, ens_gene) %>% unique() %>% filter(!is.na(ens_gene))
+
+degclusgene <- table_degcluster %>% group_by(cluster) %>% summarise(size=n()) %>% mutate(cluster=row_number())
+
+table_degcluster <- table_degcluster %>% left_join(degclusgene %>% dplyr::select(cluster)) %>% arrange(cluster,ens_gene)
+
+degclusgene
+##### FDR setting ######
+gofdr <- 0.1
+
+#cluster_num <- 6
+cluster_num <- nrow(degclusgene)
+
+```
+
+```{r go part2-2 1 clusterProfile cutoff cluster}
+# 20191206修正
+
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+folder_path <- "./2gun/clusterProfile/"
+
+#-------------#
+file_path <- paste(folder_path, "GO_2gun_BPfdr0p1_generatio",sep="")
+#file_path <- paste(folder_path, "GO_cutoffcluster_ASCs_BPfdr0p1_generatio",sep="")
+filename_csv <- file_path
+
+file_path <- paste(folder_path, "GO_2gun_SKMmarker_BPfdr0p1_generatio_cluster",sep="")
+#file_path <- paste(folder_path, "GO_cutoffcluster_ASCs_BPfdr0p1_generatio_cluster",sep="")
+filename_list <- file_path
+
+print(filename_list)
+print(filename_csv)
+
+#例 filename_list <- "./LRT/clusterProfile/H3mm18KO_mouseCTX_BRB0438_day5_2gunfdr0p2_kmeans_BPfdr0p1_generatio_cluster"
+#例 filename_csv <- "./LRT/clusterProfile/H3mm18KO_mouseCTX_BRB0438_day5_2gunfdr0p2_kemans_BPfdr0p1_generatio"
+#-------------#
+
+cluster_list <- as.list(NA) #初期化
+
+for (i in 1:cluster_num) {
+   pre_list <- as.list(NA)
+   pre_list <- table_degcluster %>% filter(cluster==as.integer(i)) %>% dplyr::select(ens_gene) %>% as.list()
+   names(pre_list) <- paste("ENSEMBL",as.character(i),sep="_")
+ 
+   if (i == 1) { 
+     cluster_list <- pre_list
+   } 
+   else cluster_list <- c(cluster_list, pre_list) 
+}
+
+
+for (i in 1:cluster_num) {
+   print(paste(i, cluster_list[[i]] %>% tibble::enframe(name = NULL) %>% nrow(), sep=", "))
+  
+   pre_ego_BP <- enrichGO(gene = cluster_list[[i]],
+                 OrgDb = "org.Mm.eg.db",
+                 keyType = 'ENSEMBL',
+                 ont = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = gofdr, qvalueCutoff  = 1.0) 
+   
+
+   #20191211修正  pvalueCutoff  = fdr
+   
+   ## pvalue < qvalue < p.adjust ##
+   # qvalueCutoff  = 0.3  qvalueCutoff  = 0.2 , qvalueCutoff  = 1.0
+
+   #if (i == 1) { 
+  #   table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster=as.integer(i))
+  #   # リスト型からデータフレームへ変換
+   #} 
+   #else table_ego_BP <- table_ego_BP %>% bind_rows(data.frame(pre_ego_BP) %>% mutate(cluster=as.integer(i)))
+                                                  
+  if (i == 1) { 
+     table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster=paste("cluster",as.character(i),sep=""))  # リスト型からデータフレームへ変換
+   } 
+   else table_ego_BP <- table_ego_BP %>% bind_rows(data.frame(pre_ego_BP) %>% mutate(cluster=paste("cluster",as.character(i),sep="")))
+    
+
+   #---- plot ---# (2020 0831 エラーが出るので、プロットは除く)
+   #BPplot <- dotplot(pre_ego_BP, showCategory=30, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   #print(BPplot)
+   #print("--")
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),".png",sep=""), width = 12, height = 12, dpi = 120)
+   #print("--")
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),".pdf",sep=""), width = 12, height = 12, dpi = 120)
+}
+
+print(table_ego_BP %>% group_by(cluster) %>% summarise())
+
+#------#
+# データはtable_ego_BPに。
+
+#------------------------------------------------------#
+# テーブルを保存
+# table_ego_BP_3t3_LRT2 <- table_ego_BP
+#
+table_ego_BP1 <- table_ego_BP %>% mutate(cluster=factor(cluster,c("cluster1","cluster2"))) %>% arrange(cluster,desc(Count)) #191106(200415), 200831 修正 
+
+#table_ego_BP1 <- table_ego_BP %>% arrange(cluster,desc(Count))  %>% left_join(dplyr::select(degclusgene, cluster)) #191106(200415)
+
+readr::write_csv(table_ego_BP1,paste(filename_csv,".csv",sep=""))
+
+
+table_ego_BP1 %>% group_by(cluster) %>% summarise(GOterm_count=n())
+
+# 先のテーブルのgeneIDをgene nameに置換する。(20191025)
+
+tablego <- table_ego_BP1 %>% mutate(gene_name=geneID) %>% dplyr::select(-(qvalue))
+
+for (i in 1:nrow(table_degcluster)) {
+  tablego <- tablego %>% mutate(gene_name=gsub(gene_name, pattern=table_degcluster$ens_gene[i], replacement=table_degcluster$ext_gene[i], ignore.case = TRUE))
+}
+
+#------------------------------------------------------#
+tablego <- tablego %>% mutate(Cluster=case_when(cluster=="cluster1" ~ "Up", cluster=="cluster2"  ~ "Down"))
+
+readr::write_csv(tablego,paste(filename_csv,"_genename.csv",sep=""))
+
+```
+
++++++++++++++++++++++++++
+
+make plot
+
+
+
+```{r load data and filter top}
+# filter GO top 20200526 ver
+# 各クラスターのCount (Gene Ratio) が高いもの、p.adjustが小さいもの、pvalueが小さいものを取り出す。
+
+# 3T3 Top5
+#file_3t3 <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/LRT/clusterProfile/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans_BPfdr0p1_generatio_genename.csv"
+#file_3t3 <- "/home/akuwakado/makeplot_18project/Inputfile/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans_BPfdr0p1_generatio_genename.csv"
+datamouse_rankall <- tablego %>% group_by(Cluster) %>% arrange(desc(Count), p.adjust, pvalue) %>% mutate(rank=row_number())
+datamouse <- datamouse_rankall %>% filter(rank<=30)
+
+
+print(datamouse)
+
+filename <- paste("./Outputfile/","Top30__",basename(filename_csv),".csv",sep="")
+print(filename)
+datamouse %>% readr::write_csv(filename) 
+
+filename <- paste("./Outputfile/","RankAll__",basename(filename_csv),".csv",sep="")
+print(filename)
+datamouse_rankall %>% readr::write_csv(filename) 
+
+
+```
+
+
+# plot mouseGO
+一度に描画 （使えそう）
+
+```{r plotfacet tate 3T3, fig.width = 8, fig.height = 5}
+
+plot_mouse <- datamouse %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+
+xmax=0.200
+xmin=0.050 #xmin=0.085
+
+#all_break <- c(3,6,9,12,15,18)
+all_break <- c(10,15,20,25,30,35,40)
+sort_mouse_all <- plot_mouse %>% arrange(desc(rank))
+
+gggU <- plot_mouse %>% arrange(desc(rank)) %>% mutate(Description =factor(Description,sort_mouse_all$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~Cluster,scales = "free_y",ncol=1)
+
+gggU0 <- plot_mouse %>% arrange(desc(rank)) %>% mutate(Description =factor(Description,sort_mouse_all$Description))  %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~Cluster,scales = "free_y",ncol=1)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","mouse_BRB0438__clusterAll_Top30_BPfdr0p1_plot1.pdf",sep=""), width = 10, height = 15, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","mouse_BRB0438__clusterAll_Top30_BPfdr0p1_plot1_none.pdf",sep=""), width = 5, height = 12, dpi = 120,limitsize = FALSE)
+
+
+
+```
+
+```{r MAplot DEGs}
+
+f_DEG_in <- function(x) x %>% filter(padj<0.2)
+f_DEG_out <- function(x) x %>% filter((!(padj<0.2))|is.na(padj))
+
+re_select_plot %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_DEG_in %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_DEG_out %>% group_by(aspect) %>% summarise(n())
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.3,color="#0000ff", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~Day,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8))
+
+#+ scale_color_manual(values = c("#ff0000","#0000ff","#000000")) 
+
+ggsave(file="./2gun/DEG_DayAll_MAplot_Mean.pdf", plot = ggmaplot, width = 7, height = 8, dpi = 120)
+plot(ggmaplot)
+
+
+```
+

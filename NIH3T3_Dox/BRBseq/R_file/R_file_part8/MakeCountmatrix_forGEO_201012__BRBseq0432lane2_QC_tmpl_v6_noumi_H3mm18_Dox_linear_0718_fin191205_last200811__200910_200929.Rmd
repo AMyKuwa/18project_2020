@@ -1,0 +1,525 @@
+---
+title: "[Last 2000909, Final 191205-1212, 18project, 3T3] MakeCountmatrix_forGEO_201012 BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811__200910_200929"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+rename <- dplyr::rename #191203
+count <- dplyr::count #191203
+
+
+
+```
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/deftable_BRB_noumi_new_190520_Last20200811ver.txt"
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+
+#deftable <- "deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <- quo(type != "C2C12")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+#myaes <- aes(colour=type, shape=revcro, label=read, size=count)
+#myaes <- aes(colour=type, shape=revcro, label=read)
+
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,size=count,label=replicate)
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day,size=count,label=f_m)
+
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり
+myaes2 <- aes(colour=time,shape=type) #kuwa add
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+
+
+model <- ~group
+#model <- ~type+growth+growth:type
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+
+# controls should be placed in the right
+contrast <- list(
+  
+  group_UI_Doxplus_vs_minus = c("group", "BRB_UI_DoxPlus", "BRB_UI_DoxMinus"),
+  group_0h_Doxplus_vs_minus = c("group", "BRB_0h_DoxPlus", "BRB_0h_DoxMinus"),
+  group_24h_Doxplus_vs_minus = c("group", "BRB_24h_DoxPlus", "BRB_24h_DoxMinus"),
+  group_48h_Doxplus_vs_minus = c("group", "BRB_48h_DoxPlus", "BRB_48h_DoxMinus")
+  
+  
+  #group_UI_Doxplus_vs_minus = c("group", "Doxplus_UI", "Doxminus_UI"),
+  #group_Diff0h_Doxplus_vs_minus = c("group", "Doxplus_Diff0h", "Doxminus_Diff0h"),
+  #group_Diff24h_Doxplus_vs_minus = c("group", "Doxplus_Diff24h", "Doxminus_Diff24h"),
+  #group_Diff48h_Doxplus_vs_minus = c("group", "Doxplus_Diff48h", "Doxminus_Diff48h")
+  
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/ensemble_list_useast.csv")
+
+annotate <- partial(right_join,e2g,by="ens_gene")
+
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+nrow(e2g)
+#readr::write_csv(e2g,"ensemble_list_asia.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest.csv")
+#readr::write_csv(e2g,"ensemble_list_useast.csv")
+```
+
+### Load counts
+
+```{r loadUMI}
+def <- readr::read_tsv(deftable) %>% filter(!!use) %>% arrange(group,sample) #202010012 change
+print(def)
+def <- def %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus"))) %>% mutate(rep=factor(rep, c("1", "2", "3", "4"))) %>% mutate(group=factor(group, c("BRB_UI_DoxMinus", "BRB_UI_DoxPlus", "BRB_0h_DoxMinus","BRB_0h_DoxPlus","BRB_24h_DoxMinus","BRB_24h_DoxPlus","BRB_48h_DoxMinus","BRB_48h_DoxPlus")))
+print(def)
+
+
+
+#def <- readr::read_tsv(deftable) %>% filter(!!use) %>% arrange(group,sample) #20200915 change
+#print(def)
+#readr::write_csv(def,"deftable_used_CEL0386noumi_C2C12_fin200915.csv")
+
+####--- New ---#### (no UMI ?)
+# Set reference levels according to the contrast
+for(x in keep(contrast,is.character))
+  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+
+umi <- def$file %>% unique %>% tibble(file=.) %>% 
+  dplyr::mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+  unnest() %>% dplyr::rename(barcode=cell) %>%
+  dplyr::inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+  select(-file,-barcode) %>% dplyr::rename(ens_gene=gene)
+
+print(umi)
+
+## sample, barcode, file を忘れずに！
+
+mat <- umi %>% annotate %>%
+  dplyr::mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+## to check read vias, this add read number as "n" column (2019/4/19)
+def <- umi %>% count(sample,wt=count) %>% dplyr::inner_join(def,.) %>% dplyr::rename(count=n)
+####-----------#### 
+
+
+#def <- readr::read_tsv(deftable) %>% filter(!!use)
+
+####--- New ---#### (no UMI ?)
+# Set reference levels according to the contrast
+#for(x in keep(contrast,is.character))
+#  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+
+#umi <- def$file %>% unique %>% tibble(file=.) %>% 
+#  dplyr::mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+#  unnest() %>% dplyr::rename(barcode=cell) %>%
+#  inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+#  select(-file,-barcode) %>% dplyr::rename(ens_gene=gene)
+
+## sample, barcode, file を忘れずに！
+
+#mat <- umi %>% annotate %>%
+#  dplyr::mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+#  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+## to check read vias, this add read number as "n" column (2019/4/19)
+#def <- umi %>% count(sample,wt=count) %>% inner_join(def,.) %>% dplyr::rename(count=n)
+####-----------#### 
+
+# Old
+# Set reference levels according to the contrast
+#for(x in keep(contrast,is.character))
+#  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+#umi <- def$file %>% unique %>% tibble(file=.) %>% 
+#  mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+#  unnest() %>% rename(barcode=cell) %>%
+#  inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+#  select(-file,-barcode) %>% rename(ens_gene=gene)
+#mat <- umi %>% annotate %>%
+#  mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+#  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+
+
+
+print(umi)
+print(def)
+```
+### Reads breakdown
+
+#### Total reads
+
+```{r totalReads, fig.width=7,fig.height=5}
+
+bychr <- mat %>% select(-(1:3)) %>%
+  gather("sample","count",-chr) %>%
+  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+
+ggplot(bychr,aes(reorder(sample,dplyr::desc(sample)),total/1e6,fill=chr)) +
+  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+  scale_x_discrete(limits = rev(levels(sample)))
+
+
+# 前
+#bychr <- mat %>% select(-(1:3)) %>%
+#  gather("sample","count",-chr) %>%
+#  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+
+#ggplot(bychr,aes(reorder(sample,desc(sample)),total/1e6,fill=chr)) +
+#  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+#  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+#  scale_x_discrete(limits = rev(levels(sample)))
+
+
+#bychr <- mat %>% select(-(1:3)) %>%
+#  gather("sample","count",-chr) %>%
+#  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+#ggplot(bychr,aes(reorder(sample,dplyr::desc(sample)),total/1e6,fill=chr)) +
+#  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+#  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+#  scale_x_discrete(limits = rev(levels(sample)))
+```
+
+#### Biotype
+
+```{r biotype,fig.width=8,fig.height=7}
+bt <- mat %>% select(-c(1,2,4)) %>% group_by(biotype) %>%
+  summarise_all(sum) %>% filter_at(-1,any_vars(. > 1000))
+bt %>% tibble::column_to_rownames("biotype") %>%
+  as.matrix %>% t %>% mosaicplot(las=2,shade=TRUE)
+```
+
+### Correlations
+
+drop rows with all 0 -> +1/2 -> geom.scale -> log -> Pearson's
+
+```{r makemat, fig.width=8,fig.height=7}
+matf <- mat %>% filter(chr!="MT") %>% filter_at(-(1:4),any_vars(. > 0))
+X <- matf %>% select(-(1:4)) %>% as.matrix
+rownames(X) <- matf$ens_gene
+lX <- log(gscale(X+0.5))
+R <- cor(lX); diag(R) <- NA
+pheatmap::pheatmap(R,color=viridis::viridis(256))
+```
+
+## Save Matrix (for GEO)
+
+```{r load data setting}
+
+normcount_readfile <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/H3mm18KO_3T3_Dox_normCount_genename.csv"
+VST_readfile <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811_add200910/H3mm18KO_3T3_Dox__vst_type_all.csv"
+zscore_readfile <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/H3mm18KO_3T3_Dox__zscore_type_all.csv"
+```
+
+
+### Save Count Matrix (for GEO)
+Original Count Matrix
+
+```{r save original Count Matrix}
+
+count_original_writefile1 <- basename(normcount_readfile) %>% gsub("normCount","Count",.) %>% gsub(".csv","__all_CountMatrix_type.csv",.)
+count_original_writefile2 <- basename(normcount_readfile) %>% gsub("normCount","Count",.) %>% gsub(".csv","__all_CountMatrix.csv",.)
+
+# MT genes, 0ありのカウントも含む。
+nrow(mat)
+ncol(mat)
+colnames(mat)
+countMatrix_original <- mat %>% dplyr::select(ens_gene,ext_gene, biotype, chr, all_of(def$sample))
+head(countMatrix_original)
+nrow(countMatrix_original)
+ncol(countMatrix_original)
+colnames(countMatrix_original)
+##
+print(count_original_writefile1)
+countMatrix_original %>% readr::write_csv(count_original_writefile1)
+##
+countMatrix_original %>% dplyr::select(-ext_gene, -biotype, -chr) %>% head()
+print(count_original_writefile2)
+countMatrix_original %>% dplyr::select(-ext_gene, -biotype, -chr) %>% readr::write_csv(count_original_writefile2)
+
+```
+
+
+
+Count Matrix used in DESeq
+
+```{r save Count Matrix used in DEG}
+count_writefile1 <- basename(normcount_readfile) %>% gsub("normCount","Count",.) %>% gsub(".csv","___CountMatrix_type.csv",.)
+count_writefile2 <- basename(normcount_readfile) %>% gsub("normCount","Count",.) %>% gsub(".csv","___CountMatrix.csv",.)
+
+
+
+# XのデータをDEGに使用 X <- matf %>% select(-(1:4)) %>% as.matrix rownames(X) <- matf$ens_gene #out of 21707 with nonzero total read count
+nrow(matf)
+ncol(matf)
+colnames(matf)
+
+countMatrix <- matf %>% dplyr::select(ens_gene,ext_gene, biotype, chr, all_of(def$sample))
+
+head(countMatrix)
+nrow(countMatrix)
+ncol(countMatrix)
+colnames(countMatrix)
+
+##
+print(count_writefile1)
+countMatrix %>% readr::write_csv(count_writefile1)
+##
+countMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% head()
+print(count_writefile2)
+countMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% readr::write_csv(count_writefile2)
+
+
+```
+### Save normalized count Matrix (for GEO)
+```{r load normcount}
+
+normcount <- readr::read_csv(normcount_readfile)
+
+
+```
+
+```{r save Normalized Count Matrix used in DEG}
+
+normcount_writefile1 <- basename(normcount_readfile) %>% gsub(".csv","___NormalizedCountMatrix_type.csv",.)
+normcount_writefile2 <- basename(normcount_readfile) %>% gsub(".csv","___NormalizedCountMatrix.csv",.)
+
+#out of 21707 with nonzero total read count
+nrow(normcount)
+ncol(normcount)
+colnames(normcount)
+
+NormcountMatrix <- normcount %>% dplyr::select(ens_gene,ext_gene, biotype, chr, all_of(def$sample))
+
+head(NormcountMatrix)
+nrow(NormcountMatrix)
+ncol(NormcountMatrix)
+colnames(NormcountMatrix)
+
+##
+print(normcount_writefile1)
+NormcountMatrix %>% readr::write_csv(normcount_writefile1)
+##
+NormcountMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% head()
+print(normcount_writefile2)
+NormcountMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% readr::write_csv(normcount_writefile2)
+
+
+```
+
+### Save VST Matrix (for GEO)
+```{r load vst}
+
+VST <- readr::read_csv(VST_readfile)
+
+```
+
+```{r save VST Matrix used in DEG}
+VST_writefile1 <- basename(VST_readfile) %>% gsub(".csv","___VSTMatrix_type.csv",.)
+VST_writefile2 <- basename(VST_readfile) %>% gsub(".csv","___VSTMatrix.csv",.)
+
+#out of 21707 with nonzero total read count
+nrow(VST)
+ncol(VST)
+colnames(VST)
+
+VSTMatrix <- VST %>% dplyr::select(ens_gene,ext_gene, biotype, chr, all_of(def$sample))
+
+head(VSTMatrix)
+nrow(VSTMatrix)
+ncol(VSTMatrix)
+colnames(VSTMatrix)
+
+##
+print(VST_writefile1)
+VSTMatrix %>% readr::write_csv(VST_writefile1)
+##
+VSTMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% head()
+print(VST_writefile2)
+VSTMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% readr::write_csv(VST_writefile2)
+
+```
+
+
+### Save Zscore Matrix (for GEO)
+```{r load zscore}
+
+zscore <- readr::read_csv(zscore_readfile)
+
+
+```
+
+```{r save Zscore Matrix used in DEG}
+zscore_writefile1 <- basename(zscore_readfile) %>% gsub(".csv","___ZscoreMatrix_type.csv",.)
+zscore_writefile2 <- basename(zscore_readfile) %>% gsub(".csv","___ZscoreMatrix.csv",.)
+
+#out of 21707 with nonzero total read count
+nrow(zscore)
+ncol(zscore)
+colnames(zscore)
+
+ZscoreMatrix <- zscore %>% dplyr::select(ens_gene,ext_gene, biotype, chr, all_of(def$sample))
+
+head(ZscoreMatrix)
+nrow(ZscoreMatrix)
+ncol(ZscoreMatrix)
+colnames(ZscoreMatrix)
+
+##
+print(zscore_writefile1)
+ZscoreMatrix %>% readr::write_csv(zscore_writefile1)
+##
+ZscoreMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% head()
+print(zscore_writefile2)
+ZscoreMatrix %>% dplyr::select(-ext_gene, -biotype, -chr) %>% readr::write_csv(zscore_writefile2)
+
+```
+
+### def
+
+```{r save def}
+print(def)
+
+def_writefile1 <- basename(count_original_writefile1) %>% gsub("__all_CountMatrix_type.csv",".csv",.) %>% gsub("_Count_genename","_deftable",.) 
+print(def_writefile1)
+def %>% readr::write_csv(def_writefile1)
+```
+
+### log2FC
+
+```{r load log2FC}
+
+#それぞれのlog2FC (読み込みが大変なため、そのまま登録)
+filepath_log2FC <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/2gun/BRB0432lane2noumi_H3mm18_Dox_resultsall_fdr0p1__final191205_last200811.csv"
+log2FC_writefile2 <- basename(filepath_log2FC) %>% gsub("_fdr0p1","",.)
+
+####
+
+
+log2FC <- readr::read_csv(filepath_log2FC)
+print(log2FC)
+colnames(log2FC)
+log2FC %>% group_by(aspect) %>%  summarise(n())
+
+####
+log2FC_sel <- log2FC %>% filter(!aspect %in% c("Intercept"))
+print(log2FC_sel)
+nrow(log2FC_writefile2)
+colnames(log2FC_sel)
+log2FC_sel %>% group_by(aspect) %>%  summarise(n())
+print(log2FC_writefile2)
+log2FC_sel %>% readr::write_csv(log2FC_writefile2)
+####
+```

@@ -1,0 +1,471 @@
+---
+title: "[Last 2000909, Final 191205-1212, 18project, 3T3] BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811_add200910 20200929(makeplot) (umi補正なし,fdr0.1)"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+rename <- dplyr::rename #191203
+count <- dplyr::count #191203
+
+
+
+```
+
+### Parameters
+
+*modify here*
+
+```{r params}
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/deftable_BRB_noumi_new_190520_Last20200811ver.txt"
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+
+#deftable <- "deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <- quo(type != "C2C12")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+#myaes <- aes(colour=type, shape=revcro, label=read, size=count)
+#myaes <- aes(colour=type, shape=revcro, label=read)
+
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,size=count,label=replicate)
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day,size=count,label=f_m)
+
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり
+myaes2 <- aes(colour=time,shape=type) #kuwa add
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+
+
+model <- ~group
+#model <- ~type+growth+growth:type
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+
+# controls should be placed in the right
+contrast <- list(
+  
+  group_UI_Doxplus_vs_minus = c("group", "BRB_UI_DoxPlus", "BRB_UI_DoxMinus"),
+  group_0h_Doxplus_vs_minus = c("group", "BRB_0h_DoxPlus", "BRB_0h_DoxMinus"),
+  group_24h_Doxplus_vs_minus = c("group", "BRB_24h_DoxPlus", "BRB_24h_DoxMinus"),
+  group_48h_Doxplus_vs_minus = c("group", "BRB_48h_DoxPlus", "BRB_48h_DoxMinus")
+  
+  
+  #group_UI_Doxplus_vs_minus = c("group", "Doxplus_UI", "Doxminus_UI"),
+  #group_Diff0h_Doxplus_vs_minus = c("group", "Doxplus_Diff0h", "Doxminus_Diff0h"),
+  #group_Diff24h_Doxplus_vs_minus = c("group", "Doxplus_Diff24h", "Doxminus_Diff24h"),
+  #group_Diff48h_Doxplus_vs_minus = c("group", "Doxplus_Diff48h", "Doxminus_Diff48h")
+  
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+#nrow(e2g)
+##readr::write_csv(e2g,"ensemble_list_asia_fin200523.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest_fin200523.csv.csv")
+##readr::write_csv(e2g,"ensemble_list_useast.csv")
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/ensemble_list_useast.csv")
+
+annotate <- partial(right_join,e2g,by="ens_gene")
+nrow(e2g)
+
+```
+
+
+## load data (BRB, NIH3T3)
+
+BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811_add200910
+
+```{r load data GO}
+
+degcluster_csv <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/LRT/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans4__cluster_result.csv") %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster)
+
+#-log2FoldChange,-lfcSE,-stat
+
+zscore_type <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/H3mm18KO_3T3_Dox__zscore_type_all.csv")
+colnames(zscore_type)
+```
+
+
+
+```{r heatmap set1}
+
+BRB_z_list <- c("BRB_UI_DoxMinus_1","BRB_UI_DoxMinus_2","BRB_UI_DoxMinus_3","BRB_UI_DoxMinus_4",
+"BRB_0h_DoxMinus_1","BRB_0h_DoxMinus_2","BRB_0h_DoxMinus_3","BRB_0h_DoxMinus_4" ,
+"BRB_24h_DoxMinus_1","BRB_24h_DoxMinus_2","BRB_24h_DoxMinus_3","BRB_24h_DoxMinus_4",
+"BRB_48h_DoxMinus_1","BRB_48h_DoxMinus_2","BRB_48h_DoxMinus_3","BRB_48h_DoxMinus_4",
+"BRB_UI_DoxPlus_1","BRB_UI_DoxPlus_2","BRB_UI_DoxPlus_3","BRB_UI_DoxPlus_4",
+"BRB_0h_DoxPlus_1","BRB_0h_DoxPlus_2","BRB_0h_DoxPlus_3","BRB_0h_DoxPlus_4",
+"BRB_24h_DoxPlus_1","BRB_24h_DoxPlus_2","BRB_24h_DoxPlus_3" ,"BRB_24h_DoxPlus_4",
+"BRB_48h_DoxPlus_1", "BRB_48h_DoxPlus_2", "BRB_48h_DoxPlus_3", "BRB_48h_DoxPlus_4")
+
+
+zscore_type_deg <- zscore_type %>% filter(ens_gene %in% degcluster_csv$ens_gene) %>% left_join(degcluster_csv) %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster,all_of(BRB_z_list)) %>% arrange(cluster,ext_gene)
+
+colnames(zscore_type_deg)
+nrow(zscore_type_deg)
+
+
+zscore_type_deg_clus1 <- zscore_type_deg %>% filter(cluster=="1")
+zscore_type_deg_clus2 <- zscore_type_deg %>% filter(cluster=="2")
+zscore_type_deg_clus3 <- zscore_type_deg %>% filter(cluster=="3")
+zscore_type_deg_clus4 <- zscore_type_deg %>% filter(cluster=="4")
+
+nrow(zscore_type_deg_clus1)
+nrow(zscore_type_deg_clus2)
+nrow(zscore_type_deg_clus3)
+nrow(zscore_type_deg_clus4)
+
+#zscore_type_Top10GOmuscle_up <- zscore_type_select %>% filter(ens_gene %in% degcluster_csv$ens_gene)
+#zscore_type_Top10GOmuscle_down <- zscore_type_select %>% filter(ens_gene %in% degcluster_csv$ens_gene)
+
+
+
+```
+
+```{r heatmap set2}
+####
+zscore_mat_clus1 <-  zscore_type_deg_clus1 %>% dplyr::select(all_of(BRB_z_list)) %>% as.matrix()
+rownames(zscore_mat_clus1) <- zscore_type_deg_clus1$ext_gene
+heat_title_clus1 <- paste("NIH3T3 Dox DEG cluster1: ",nrow(zscore_type_deg_clus1)," DEG: ",nrow(zscore_type_deg)," Total: ",nrow(zscore_type),sep="")
+print(heat_title_clus1)
+###
+zscore_mat_clus2 <-  zscore_type_deg_clus2 %>% dplyr::select(all_of(BRB_z_list)) %>% as.matrix()
+rownames(zscore_mat_clus2) <- zscore_type_deg_clus2$ext_gene
+heat_title_clus2 <- paste("NIH3T3 Dox DEG cluster2: ",nrow(zscore_type_deg_clus2)," DEG: ",nrow(zscore_type_deg)," Total: ",nrow(zscore_type),sep="")
+print(heat_title_clus2)
+###
+zscore_mat_clus3 <-  zscore_type_deg_clus3 %>% dplyr::select(all_of(BRB_z_list)) %>% as.matrix()
+rownames(zscore_mat_clus3) <- zscore_type_deg_clus3$ext_gene
+heat_title_clus3 <- paste("NIH3T3 Dox DEG cluster3: ",nrow(zscore_type_deg_clus3)," DEG: ",nrow(zscore_type_deg)," Total: ",nrow(zscore_type),sep="")
+print(heat_title_clus3)
+###
+zscore_mat_clus4 <-  zscore_type_deg_clus4 %>% dplyr::select(all_of(BRB_z_list)) %>% as.matrix()
+rownames(zscore_mat_clus4) <- zscore_type_deg_clus4$ext_gene
+heat_title_clus4 <- paste("NIH3T3 Dox DEG cluster4: ",nrow(zscore_type_deg_clus4)," DEG: ",nrow(zscore_type_deg)," Total: ",nrow(zscore_type),sep="")
+print(heat_title_clus4)
+###
+
+```
+
+```{r heatmap set3}
+zscore_type_housekeep <- zscore_type %>% filter(ext_gene %in% c("Rpl13","Rpl27","Actb","Gapdh")) %>% left_join(degcluster_csv) %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster,all_of(BRB_z_list)) %>% arrange(cluster,ext_gene)
+
+###
+zscore_mat_housekeep <-  zscore_type_housekeep %>% dplyr::select(all_of(BRB_z_list)) %>% as.matrix()
+rownames(zscore_mat_housekeep) <- zscore_type_housekeep$ext_gene
+heat_title_housekeep <- paste("NIH3T3 Dox housekeeping: ",nrow(zscore_type_housekeep)," Total: ",nrow(zscore_type),sep="")
+print(heat_title_housekeep )
+###
+
+```
+
+zscore_type_deg %>% dplyr::select(ext_gene,all_of(BRB_z_list)) %>% gather(key=sample,value=z,-ext_gene)
+
+### z score heatmap (new)
+
+```{r heatmap clustering draw, fig.hight=10,fig.width=15}
+#breaksList = seq(-3.0, 3.0, 0.1)
+breaksList = seq(-2.5, 2.5, 0.1)
+
+heatmapcols <- colorRampPalette(rev(brewer.pal(n=7,name="RdYlBu")))(length(breaksList))
+#================================================#
+
+
+#anno_row <- data.frame(Chr = zscore_BRBDEG$chr, cluster = zscore_BRBDEG$cluster)
+#rownames(anno_row) <- zscore_BRBDEG$ext_gene
+
+#anno_col <- data.frame(Seq = def_list_select$seq, Dox = def_list_select$type)
+#rownames(anno_col) <- def_list_select$sample
+#================================================#
+
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_clus1,
+                                  
+     main = heat_title_clus1,
+                                  
+     scale = "none",
+     
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     #cluster_cols = FALSE, #samplrf
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     #show_rownames = TRUE, #peak名 (領域名)
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     #annotation_names_col = TRUE,
+     #show_rownames = TRUE, #peak名
+     #show_colnames = TRUE, #sample_position名
+     #annotation_names_col =TRUE,
+     #gaps_row=table_gap$nonoo,
+     #gaps_col=c(3,6,8,11),
+     
+     #na_col ="white",
+
+     #gaps_row=c(80),
+     gaps_col= seq(4, 32, 4),
+     #gaps_col= seq(2, 8*2, 2),
+     #gaps_col= c(2,4,6,8,10,12,14), # c(3, 6, 9, 12), #gaps_col= seq(2, 6*2, 2),
+     #gaps_col=c(200,400,600,800,1000,1200,1400,1600,1800,2000,2200,2400), gaps_col= seq(200, 12*200, 200),
+     #cellheight = nrow(mymatrix2_1)*(0.25),
+     #cellwidth = 20,
+     #cellheight = 400/nrow(mymatrix1),
+     #cellheight = 0.005,   #cellheight = 1.5,
+     #cellheight = 0.010,   #cellheight = 1.5,
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 20,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 8,      #cellwidth = 3,
+     #cellheight = 6,   #cellheight = 1.5,
+
+     #cellheight = 6,   #cellheight = 1.5,
+     #cellwidth = 7,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 15,      #cellwidth = 3,
+     #border_color="gray",  #border_color="#000000",
+     border_color=NA,
+     #fontsize_row = 6,
+     #annotation_row = mixed_name,
+     #annotation_row = anno_row,
+     #annotation_col = anno_col,
+     
+#     cutree_rows = 6,
+     #cutree_rows = 10,
+     
+     #display_numbers = TRUE,
+     #number_format = "%1.2e",
+     #number_color = "black",
+     #annotation_col = annotdf_sample
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     #fontsize_row = 0.6,
+     legend=TRUE,
+     #legend_breaks = leg_break,
+     #legend_labels = as.character(leg_break),
+     breaks = breaksList,
+     color = heatmapcols
+     #annotation_colors = mycolors
+     #treeheight_row = 10
+)
+
+ggsave(plot=z_heat1,file="./heatmap_cluster1.pdf", width = 15, height = 5, dpi = 360, limitsize = FALSE)
+
+
+
+
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_clus2,
+     main = heat_title_clus2,
+     scale = "none",
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     gaps_col= seq(4, 32, 4),
+
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 20,      #cellwidth = 3,
+
+     border_color=NA,
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     legend=TRUE,
+     breaks = breaksList,
+     color = heatmapcols
+)
+
+ggsave(plot=z_heat1,file="./heatmap_cluster2.pdf", width = 15, height = 8, dpi = 360, limitsize = FALSE)
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_clus3,
+     main = heat_title_clus3,
+     scale = "none",
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     gaps_col= seq(4, 32, 4),
+
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 20,      #cellwidth = 3,
+
+     border_color=NA,
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     legend=TRUE,
+     breaks = breaksList,
+     color = heatmapcols
+)
+
+ggsave(plot=z_heat1,file="./heatmap_cluster3.pdf", width = 15, height = 10, dpi = 360, limitsize = FALSE)
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_clus4,
+     main = heat_title_clus4,
+     scale = "none",
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     gaps_col= seq(4, 32, 4),
+
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 20,      #cellwidth = 3,
+
+     border_color=NA,
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     legend=TRUE,
+     breaks = breaksList,
+     color = heatmapcols
+)
+
+ggsave(plot=z_heat1,file="./heatmap_cluster4.pdf", width = 15, height = 5, dpi = 360, limitsize = FALSE)
+```
+
+```{r heatmap house keep draw, fig.hight=10,fig.width=15}
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_housekeep,
+     main = heat_title_housekeep,
+     scale = "none",
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     gaps_col= seq(4, 32, 4),
+
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 20,      #cellwidth = 3,
+
+     border_color=NA,
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     legend=TRUE,
+     breaks = breaksList,
+     color = heatmapcols
+)
+
+ggsave(plot=z_heat1,file="./heatmap_housekeep.pdf", width = 15, height = 5, dpi = 360, limitsize = FALSE)
+
+```

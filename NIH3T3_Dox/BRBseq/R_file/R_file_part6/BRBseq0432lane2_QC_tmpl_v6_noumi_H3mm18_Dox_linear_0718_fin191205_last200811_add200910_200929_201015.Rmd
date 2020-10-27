@@ -1,0 +1,814 @@
+---
+title: "[Last 2000909, Final 191205-1212, 18project, 3T3] BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811_add200910_200929_201015 (umi補正なし,fdr0.1) (TPM,尤度比検定)"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+count <- dplyr::count
+rename <- dplyr::rename
+```
+
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/deftable_BRB_noumi_new_190520_Last20200811ver.txt"
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+
+#deftable <- "deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <- quo(type != "C2C12")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+#myaes <- aes(colour=type, shape=revcro, label=read, size=count)
+#myaes <- aes(colour=type, shape=revcro, label=read)
+
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,size=count,label=replicate)
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day,size=count,label=f_m)
+
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり 
+myaes <- aes(colour=time,shape=type,label=rep) #ラベルあり 変更　10101015 myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり 
+myaes2 <- aes(colour=time,shape=type) #kuwa add
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+
+
+model <- ~group
+#model <- ~type+growth+growth:type
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+
+# controls should be placed in the right
+contrast <- list(
+  
+  group_UI_Doxplus_vs_minus = c("group", "BRB_UI_DoxPlus", "BRB_UI_DoxMinus"),
+  group_0h_Doxplus_vs_minus = c("group", "BRB_0h_DoxPlus", "BRB_0h_DoxMinus"),
+  group_24h_Doxplus_vs_minus = c("group", "BRB_24h_DoxPlus", "BRB_24h_DoxMinus"),
+  group_48h_Doxplus_vs_minus = c("group", "BRB_48h_DoxPlus", "BRB_48h_DoxMinus")
+  
+  
+  #group_UI_Doxplus_vs_minus = c("group", "Doxplus_UI", "Doxminus_UI"),
+  #group_Diff0h_Doxplus_vs_minus = c("group", "Doxplus_Diff0h", "Doxminus_Diff0h"),
+  #group_Diff24h_Doxplus_vs_minus = c("group", "Doxplus_Diff24h", "Doxminus_Diff24h"),
+  #group_Diff48h_Doxplus_vs_minus = c("group", "Doxplus_Diff48h", "Doxminus_Diff48h")
+  
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/ensemble_list_useast.csv")
+
+annotate <- partial(right_join,e2g,by="ens_gene")
+
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+nrow(e2g)
+#readr::write_csv(e2g,"ensemble_list_asia.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest.csv")
+#readr::write_csv(e2g,"ensemble_list_useast.csv")
+```
+
+
+### DESeq2 (load data)
+
+vst => z score
+
+```{r zscore 200811add load 20201015}
+
+#vsd <- DESeq2::vst(dds) #normalized countが入っている。(vstかrlog)
+#Xd <- SummarizedExperiment::assay(vsd) # 全て選択(200326) 20190920を元に (191024)
+#Xs <- Xd %>% t %>% scale %>% t
+
+#vst_score <- Xd %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble #200909 add
+#vst_type <- vst_score  %>% annotate %>% dplyr::select("ens_gene","ext_gene", "biotype","chr", all_of(label$sample))
+
+
+#zscore <- Xs %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+#zscore_type <- zscore  %>% annotate %>% dplyr::select("ens_gene","ext_gene", "biotype","chr", all_of(label$sample))
+
+#readr::write_csv(vst_score, "H3mm18KO_3T3_Dox__vst_all.csv") #200909 add
+#readr::write_csv(vst_type, "H3mm18KO_3T3_Dox__vst_type_all.csv") #200909 add
+#readr::write_csv(zscore, "H3mm18KO_3T3_Dox__zscore_all.csv")
+#readr::write_csv(zscore_type, "H3mm18KO_3T3_Dox__zscore_type_all.csv")
+
+#nrow(vst_type)
+#nrow(zscore_type)
+
+## load vst
+
+def <- readr::read_tsv(deftable) %>% filter(!!use)
+print(def)
+
+vst_score <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811_add200910/H3mm18KO_3T3_Dox__vst_all.csv") #200909 add
+vst_type <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811_add200910/H3mm18KO_3T3_Dox__vst_type_all.csv") #200909 add
+zscore <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811_add200910/H3mm18KO_3T3_Dox__zscore_all.csv")
+zscore_type <-  readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811_add200910/H3mm18KO_3T3_Dox__zscore_type_all.csv")
+
+Xd <- vst_score %>% dplyr::select(-ens_gene) %>% as.matrix()
+rownames(Xd) <- vst_score$ens_gene
+
+```
+
+
+
+--------------------
+ここから 20201015 add
+
+### Dimension reduction (VST)
+
+Top var 50 genes
+
+```{r PCA vst,fig.width=4,fig.height=3}
+ntop <- 50
+
+# set scale=TRUE if the patterns (not level) is the matter
+## Xd: vst values
+
+p_vst <- prcomp(t(Xd[rank(-apply(Xd,1,var)) <= ntop,]),scale=scalerows,center=TRUE) ## ここでは、zscoreを使ってPCAを行なっているのと同じ。
+screeplot(p_vst,las=2,main="Importance")
+#print(summary(p_vst)$imp[,seq(min(10,ncol(X)))])
+
+## save data
+
+var_vst_all <- apply(Xd,1,var) %>% as.data.frame()  %>% tibble::rownames_to_column("ens_gene") %>% as_tibble %>% dplyr::rename(var=".") 
+var_vst_all %>% readr::write_csv("./PCA/var_vst_all.csv")
+var_vst_all %>% nrow()
+
+rankvar_vst_all <- rank(-apply(Xd,1,var)) %>% as.data.frame()  %>% tibble::rownames_to_column("ens_gene") %>% as_tibble  %>%  dplyr::rename(ranking_var=".") 
+rankvar_vst_all %>% readr::write_csv("./PCA/rankvar_vst_all.csv")
+rankvar_vst_all %>% nrow()
+
+vst__rankvartop500gene <- Xd[rank(-apply(Xd,1,var)) <= ntop,] %>% as.data.frame()  %>% tibble::rownames_to_column("ens_gene") %>% as_tibble 
+vst__rankvartop500gene %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vst__rankvartop50gene.csv")
+vst__rankvartop500gene %>% nrow()
+
+
+```
+```{r save pca data}
+
+p_vst_scale <- p_vst$scale %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble 
+p_vst_sdev <- p_vst$sdev %>% as.data.frame() %>% tibble::rownames_to_column("PC") %>% as_tibble  %>%  dplyr::rename(Standard_deviation=".") 
+p_vst_x <- p_vst$x %>% as.data.frame()  %>% tibble::rownames_to_column("sample") %>% as_tibble 
+p_vst_center <- p_vst$center %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble 
+p_vst_rotation <- p_vst$rotation %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble 
+
+p_vst_scale %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vartop50gene__pca_vst_scale.csv")
+p_vst_sdev %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vartop50gene__pca_vst_sdev.csv")
+p_vst_x %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vartop50gene__vst__pca_vst_x.csv")
+p_vst_center %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vartop50gene__vst__pca_vst_center.csv")
+p_vst_rotation %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vartop50gene__vst__pca_vst_rotation.csv")
+
+```
+
+
+--------------------
+
+
+
+```{r makescoreDF vst}
+label <- def #%>% filter(sample %in% colnames(X))
+df_vst <- data.frame(p_vst$x) %>% as_tibble(rownames="sample") %>%
+  inner_join(label,.) %>% select(-file)
+
+df_vst <- df_vst  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus"))) %>% mutate(rep=factor(rep, c("1", "2", "3", "4"))) %>% mutate(group=factor(group, c("BRB_UI_DoxMinus", "BRB_UI_DoxPlus", "BRB_0h_DoxMinus","BRB_0h_DoxPlus","BRB_24h_DoxMinus","BRB_24h_DoxPlus","BRB_48h_DoxMinus","BRB_48h_DoxPlus"))) # 20200908
+print(df_vst)
+
+df_vst %>% readr::write_csv("./PCA/PCA_vst_vartop50gene.csv")
+ggpoints(df_vst,modifyList(aes(PC1,PC2),myaes))
+
+```
+
+
+
+```{r color pal PCA, fig.width=5,fig.height=4}
+library(RColorBrewer) # 20201015 add
+
+cols_pca <- brewer.pal(8, "Paired")
+print(cols_pca)
+
+mmplot <- df_vst %>% ggplot(aes(x=PC1,y=PC2,color=group)) + geom_abline(intercept=0,slope=0,colour="gray") + geom_vline(xintercept=0,colour="gray") + geom_point(stroke=1) + theme_bw() +  scale_color_manual(values = cols_pca) + ggtitle("var top 50 genes")  + theme(legend.position = "top",legend.text = element_text(size=3),legend.title = element_blank())
+
+mmplot
+ggsave(plot = mmplot,file="./PCA/PC1PC2_vst_vartop50gene_scalefree.pdf", dpi = 100, width = 4, height = 5)
+
+
+mmplot <- df_vst %>% ggplot(aes(x=PC1,y=PC2,color=group)) + geom_abline(intercept=0,slope=0,colour="gray") + geom_vline(xintercept=0,colour="gray") + geom_point(stroke=1) + theme_bw() +  scale_color_manual(values = cols_pca) + ggtitle("var top 50 genes")  + theme(legend.position = "top",legend.text = element_text(size=3),legend.title = element_blank()) + coord_fixed(ratio=1)
+
+mmplot
+ggsave(plot = mmplot,file="./PCA/PC1PC2_vst_vartop50gene.pdf", dpi = 100, width = 4, height = 5)
+
+
+mmplot <- df_vst %>% ggplot(aes(x=PC1,y=type,color=group)) + geom_vline(xintercept=0,colour="gray") + geom_point(stroke=1) + theme_bw() +  scale_color_manual(values = cols_pca) + ggtitle("var top 500 genes")   + theme(legend.position = "top",legend.text = element_text(size=3),legend.title = element_blank())
+
+mmplot
+ggsave(plot = mmplot,file="./PCA/PC1_vst_vartop50gene.pdf", dpi = 100, width = 4, height = 2)
+
+
+```
+
+
+### Check (Jw)
+
+```{r ddddd}
+
+PC1_Sw <- df_vst %>% group_by(group,time,type) %>% summarise(PC1_avg = mean(PC1),PC1_sd=sd(PC1),PC1_V=sd(PC1)*sd(PC1), PC1_Sk2=sd(PC1)*sd(PC1)*(4-1)) %>% ungroup()
+#PC1_Sw %>% dplyr::select(group,PC1_avg) %>% spread(key=group,value=PC1_avg)
+#PC1_Sw_UI <- PC1_Sw %>% filter(time=="UI") 
+
+Time_list <- c("UI","0h","24h","48h")
+
+
+#######
+print("~~ H3p3_BRB ~~")
+
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clusterAll: H3p3_BRB --"))
+  sb1 <- PC1_Sw %>% filter((time==Time_list[i]))
+  sb2 <- (sb1$PC1_avg[1]-sb1$PC1_avg[2])^2
+  sw1 <- sum(sb1$PC1_Sk2[1]+sb1$PC1_Sk2[2])
+  print(sb2)
+  
+  if (i == 1) { 
+    sb_r <- data.frame(time=Time_list[i],group1=sb1$group[1],group2=sb1$group[2],type1=sb1$type[1],type2=sb1$type[2],PC1_Sb=sb2,PC1_Sw=sw1)%>% as_tibble()
+  } 
+  else {
+    sb_3 <- data.frame(time=Time_list[i],group1=sb1$group[1],group2=sb1$group[2],type1=sb1$type[1],type2=sb1$type[2],PC1_Sb=sb2,PC1_Sw=sw1)%>% as_tibble()
+    sb_r <- bind_rows(sb_r, sb_3)
+  }
+}
+
+PC1_Sb <- sb_r
+
+print(PC1_Sb)
+
+PC1_SwSb <- left_join(PC1_Sw,PC1_Sb) %>% mutate(PC1_Jw=PC1_Sb/PC1_Sw)
+
+print(PC1_SwSb)
+
+PC1_SwSb %>% readr::write_csv("./PCA/H3mm18KO_3T3_Dox__vartop50gene__pca_FisherLDA.csv") #Fisherの線形判別,線形判別分析（Linear Discriminant Analysis)
+
+```
+
+```{r PC1 plot}
+
+mmplot <- df_vst %>% ggplot(aes(x=PC1,y=type,color=group)) + geom_vline(xintercept=0,colour="gray")+ theme_bw() +  scale_color_manual(values = cols_pca) + ggtitle("var top 500 genes")   + theme(legend.position = "top",legend.text = element_text(size=3),legend.title = element_blank())+ geom_point(aes(x=PC1_avg,y=type),data=PC1_SwSb)
+
+mmplot
+ggsave(plot = mmplot,file="./PCA/PC1_vst_vartop50gene__with_Jw.pdf", dpi = 100, width = 4, height = 2)
+
+
+```
+
+### GO解析 
+
+####  PCAのTop var 50 genes の クラスタリング の結果をGO
+
+
+```{r load PCA variance top 500 genes}
+
+topvar50genes <- p_vst_scale %>% left_join(e2g)
+nrow(topvar50genes)
+
+```
+
+```{r GO Load list part2-1}
+
+table_degcluster <- topvar50genes %>% arrange(ens_gene) %>% dplyr::select(ens_gene,ext_gene) %>% mutate(cluster="vartop50gene")
+table_degcluster %>% group_by(cluster) %>% summarise(size=n())
+
+##### FDR setting ######
+gofdr <- 0.1
+
+cluster_num <- 1
+
+```
+
+
+```{r go clusterProfile part2-2}
+# 20191206修正
+
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+folder_path <- "./PCA/clusterProfile/PCA_vartop50gene/"
+
+#-------------#
+file_path <- paste(folder_path, "PCA_vartop50gene_BPfdr0p1_generatio",sep="")
+filename_csv <- file_path
+
+file_path <- paste(folder_path, "PCA_vartop50gene_BPfdr0p1_generatio",sep="")
+filename_list <- file_path
+
+print(filename_list)
+print(filename_csv)
+
+#例 filename_list <- "./LRT/clusterProfile/H3mm18KO_mouseCTX_BRB0438_day5_2gunfdr0p2_kmeans_BPfdr0p1_generatio_cluster"
+#例 filename_csv <- "./LRT/clusterProfile/H3mm18KO_mouseCTX_BRB0438_day5_2gunfdr0p2_kemans_BPfdr0p1_generatio"
+#-------------#
+
+cluster_list <- as.list(NA) #初期化
+
+for (i in 1:cluster_num) {
+   pre_list <- as.list(NA)
+   #pre_list <- table_degcluster %>% filter(cluster==as.double(i)) %>% dplyr::select(ens_gene) %>% as.list()
+   pre_list <- table_degcluster %>% filter(cluster=="vartop50gene") %>% dplyr::select(ens_gene) %>% as.list()
+   names(pre_list) <- paste("ENSEMBL",as.character(i),sep="_")
+ 
+   if (i == 1) { 
+     cluster_list <- pre_list
+   } 
+   else cluster_list <- c(cluster_list, pre_list) 
+}
+
+
+for (i in 1:cluster_num) {
+   print(paste(i, cluster_list[[i]] %>% tibble::enframe(name = NULL) %>% nrow(), sep=", "))
+  
+   pre_ego_BP <- enrichGO(gene = cluster_list[[i]],
+                 OrgDb = "org.Mm.eg.db",
+                 keyType = 'ENSEMBL',
+                 ont = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = gofdr, qvalueCutoff  = 1.0) #20191211修正  pvalueCutoff  = fdr
+   
+   ## pvalue < qvalue < p.adjust ##
+   # qvalueCutoff  = 0.3  qvalueCutoff  = 0.2 , qvalueCutoff  = 1.0
+
+  
+   if (i == 1) { 
+     #table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster=paste("cluster",as.character(i),sep=""))  # リスト型からデータフレームへ変換
+     table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster="vartop50gene")  # リスト型からデータフレームへ変換
+   } 
+   else table_ego_BP <- table_ego_BP %>% bind_rows(data.frame(pre_ego_BP) %>% mutate(cluster=paste("cluster",as.character(i),sep="")))
+   
+   #---- plot ---#
+   BPplot <- dotplot(pre_ego_BP, showCategory=30, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   print(BPplot)
+   ggsave(BPplot,file=paste(filename_list,"_Category30.png",sep=""), width = 8, height = 12, dpi = 120)
+   
+   BPplot <- dotplot(pre_ego_BP, showCategory=10, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   print(BPplot)
+   ggsave(BPplot,file=paste(filename_list,"_Category20.png",sep=""), width = 8, height = 4, dpi = 120)
+ 
+  
+   BPplot <- dotplot(pre_ego_BP, showCategory=10, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   print(BPplot)
+   ggsave(BPplot,file=paste(filename_list,"_Category10.png",sep=""), width = 8, height = 4, dpi = 120)
+ 
+   #BPplot <- dotplot(pre_ego_BP, showCategory=30, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   #print(BPplot)
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),".png",sep=""), width = 8, height = 12, dpi = 120)
+   
+   #BPplot <- dotplot(pre_ego_BP, showCategory=10, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   #print(BPplot)
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),"_Category10.png",sep=""), width = 8, height = 4, dpi = 120)
+     
+   #BPplot <- dotplot(pre_ego_BP, showCategory=5, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+   #print(BPplot)
+   #ggsave(BPplot,file=paste(filename_list,as.character(i),"_Category5.png",sep=""), width = 8, height = 3, dpi = 120)
+}
+
+print(table_ego_BP %>% group_by(cluster) %>% summarize())
+
+#------#
+# データはtable_ego_BPに。
+
+
+```
+
+```{r go clusterProfile part2-3}
+# 20191206修正
+#------------------------------------------------------#
+# テーブルを保存
+# table_ego_BP_3t3_LRT2 <- table_ego_BP
+
+table_ego_BP1 <- table_ego_BP %>% arrange(cluster,desc(Count)) #191106
+#table_ego_BP1 <- table_ego_BP %>% mutate(cluster=factor(cluster,c("cluster1","cluster2","cluster3","cluster4"))) %>% arrange(cluster,desc(Count)) #191106
+
+readr::write_csv(table_ego_BP1,paste(filename_csv,".csv",sep=""))
+
+# 先のテーブルのgeneIDをgene nameに置換する。(20191025)
+
+tablego <- table_ego_BP1 %>% mutate(gene_name=geneID) %>% dplyr::select(-(qvalue))
+
+for (i in 1:nrow(table_degcluster)) {
+  tablego <- tablego %>% mutate(gene_name=gsub(gene_name, pattern=table_degcluster$ens_gene[i], replacement=table_degcluster$ext_gene[i], ignore.case = TRUE))
+}
+
+print(tablego)
+
+print(paste(filename_csv,"_genename.csv",sep=""))
+readr::write_csv(tablego,paste(filename_csv,"_genename.csv",sep=""))
+
+#------------------------------------------------------#
+
+#GOのtermの数
+print(tablego %>% group_by(cluster) %>% summarize(cluster_3t3Dox_num = dplyr::n()))
+
+## 変更 ##
+table_ego_BP_2gunfdr0p2_cluster <- tablego
+
+#--- メモ ----#
+#tableggg <- table_ego_clustercluster
+#colm <- tableggg$geneID
+#for (i in 1:88) {
+#  colm <- sub(rrres_cluster3$ens_gene[i], rrres_cluster3$ext_gene[i], colm)
+#}
+#print(colm)
+
+```
+
+
+
+```{R memo part2-6}
+# x=pvalue, y=p.adjust
+plottt <- table_ego_BP %>% ggplot(aes(x=pvalue, y=p.adjust, size=Count)) + geom_point()+geom_abline(intercept=0,slope=1.0,linetype="dashed",colour="blue") + xlim(0,NA) + ylim(0,NA) + ggtitle(label=paste("p.adjust (BH) < ",as.character(gofdr),sep=""))
+print(plottt)
+
+# x=pvalue, y=qvalue
+plottt <- table_ego_BP %>% ggplot(aes(x=pvalue, y=qvalue, size=Count)) + geom_point()+geom_abline(intercept=0,slope=1.0,linetype="dashed",colour="blue") + xlim(0,NA) + ylim(0,NA) + ggtitle(label=paste("p.adjust (BH) < ",as.character(gofdr),sep=""))
+print(plottt)
+
+# x=p.adjust, y=qvalue
+plottt <- table_ego_BP %>% ggplot(aes(x=p.adjust, y=qvalue, size=Count)) + geom_point()+geom_abline(intercept=0,slope=1.0,linetype="dashed",colour="blue") + xlim(0,NA) + ylim(0,NA) + ggtitle(label=paste("p.adjust (BH) < ",as.character(gofdr),sep=""))
+print(plottt)
+
+
+## pvalue < qvalue < p.adjust ##
+# pvalue < p.adjust
+# pvalue < qvalue
+# qvalue < p.adjust
+
+#---------------------#
+
+#[BBRB-seq_0438_QC_tmpl_v6_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_fdr0p2ver_and_LRT_191024  (umi補正なし,fdr0.2) (TPM 190722ver) (190924を元に) (190627-1024)]を参考にした。
+
+#pvalueCutoff	
+#pvalue cutoff on enrichment tests to report
+
+#pAdjustMethod	
+#one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+
+#qvalueCutoff	
+#qvalue cutoff on enrichment tests to report as significant. Tests must pass i) pvalueCutoff on unadjusted pvalues, ii) pvalueCutoff on adjusted pvalues and iii) qvalueCutoff on qvalues to be reported.
+
+# 設定(pvalueCutoff  = 0.1, qvalueCutoff  = 0.2)だと、p値<0.1, p.adjust値<0.1, q値<0.2 になっている。
+
+```
+
+#### make GO figure
+
+arrange(desc(Count), p.adjust, pvalue
+
+```{r load data and filter top}
+# filter GO top 20200526 ver
+# 各クラスターのCount (Gene Ratio) が高いもの、p.adjustが小さいもの、pvalueが小さいものを取り出す。
+
+# 3T3 Top5
+#file_3t3 <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/LRT/clusterProfile/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans_BPfdr0p1_generatio_genename.csv"
+#file_3t3 <- "/home/akuwakado/makeplot_18project/Inputfile/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans_BPfdr0p1_generatio_genename.csv"
+#data3t3_rankall <- readr::read_csv(file_3t3) %>% group_by(cluster) %>% arrange(desc(Count), p.adjust, pvalue) %>% mutate(rank=row_number())
+#data3t3 <- data3t3_rankall %>% filter(rank<=5)
+
+
+
+data3t3_rankall <- tablego %>% group_by(cluster) %>% arrange(desc(Count), p.adjust, pvalue) %>% mutate(rank=row_number())
+data3t3 <- data3t3_rankall %>% filter(rank<=30)
+
+
+print(data3t3)
+
+filename <- paste("./PCA/clusterProfile/PCA_vartop50gene/Outputfile/","Top30__",basename(paste(filename_csv,"_genename.csv",sep="")),sep="")
+print(filename)
+data3t3 %>% readr::write_csv(filename) 
+
+filename <- paste("./PCA/clusterProfile/PCA_vartop50gene/Outputfile/","RankAll__",basename(paste(filename_csv,"_genename.csv",sep="")),sep="")
+print(filename)
+data3t3_rankall %>% readr::write_csv(filename) 
+
+
+```
+
+
+plot 3T3 GO
+
+
+```{r plotfacet tate 3T3, fig.width = 8, fig.height = 5}
+
+plot_3t3 <- data3t3 %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+
+xmax=0.50
+xmin=0.10
+
+#xmax=0.175
+#xmin=0.085
+
+all_break <- c(6,10,14,18,22)
+#all_break <- c(5,10,15,20,25)
+#all_break <- c(3,6,9,12,15)
+
+sort_3t3_all <- plot_3t3 %>% arrange(desc(rank))
+
+gggU <- plot_3t3 %>% arrange(desc(rank)) %>% mutate(Description =factor(Description,sort_3t3_all$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~cluster,scales = "free_y",ncol=1)
+
+gggU0 <- plot_3t3 %>% arrange(desc(rank)) %>% mutate(Description =factor(Description,sort_3t3_all$Description))  %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~cluster,scales = "free_y",ncol=1)
+
+print(gggU)
+ggsave(gggU,file=paste("./PCA/clusterProfile/PCA_vartop50gene/Outputfile/","3T3_BRB0432__PCA_vartop50gene__Top30_BPfdr0p1_plot1.pdf",sep=""), width = 8, height = 7, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./PCA/clusterProfile/PCA_vartop50gene/Outputfile/","3T3_BRB0432__PCA_vartop50gene__Top30_BPfdr0p1_plot1_none.pdf",sep=""), width = 4, height = 7, dpi = 120,limitsize = FALSE)
+
+
+
+```
+# MA plot
+
+
+
+### normalized count plot
+
+```{r normCount Matome loaddata}
+# 2019 12月作成
+
+#re <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_results__final200915.csv")
+
+norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/BRB0432lane2noumi_H3mm18_Dox__normCount__final191205_last200811.csv") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+
+#norm_plotlist_all_clus <- norm_plotlist_all_name %>% left_join(degcluster_csv)
+
+# %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster) %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+# %>% left_join(degcluster_csv) %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster,all_of(BRB_z_list)) %>% arrange(cluster,ext_gene)
+                                          
+#norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/Norm_deftable_all_final200915__genename.csv") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))) #191206 追加
+
+nrow(norm_plotlist_all_name)
+print(norm_plotlist_all_name %>% dplyr::select(ens_gene) %>% unique() %>% nrow())
+#nrow(norm_plotlist_all_clus)
+
+```
+
+
+
+こちらで横軸を計算してプロット
+
+20201015 add (20200915ver)
+
+```{r norm count def table}
+
+Set_cutoff <- 10.0
+
+## 各時刻の平均を計算し、normalized count > 10 を超えるものを抽出する。
+
+#----- 使用するデータのみ取り出す ---# 20200914
+
+norm_plotlist_all <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/BRB0432lane2noumi_H3mm18_Dox__normCount__final191205_last200811.csv") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+#norm_plotlist_all <- normalizedcount %>% gather("sample", "normalized",-(ens_gene)) %>% inner_join(def, by = "sample") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72")))
+
+#norm_plotlist_sel <- norm_plotlist_all %>% filter(sample %in% def_select$sample) %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("eGFP","mm18B"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72")))
+
+#notm_plotlist_cutoff <- norm_plotlist_all %>% annotate() %>% group_by(ens_gene, ext_gene, Day, intact_CTX) %>% summarise(groupMean=mean(normalized))  %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+## "Dox +, Dox -"関係なく各時刻での平均を求める
+notm_plotlist_beforecutoff <- norm_plotlist_all %>% group_by(ens_gene, ext_gene, time) %>% summarise(groupMean=mean(normalized))
+#notm_plotlist_beforecutoff <- norm_plotlist_sel %>% annotate() %>% group_by(ens_gene, ext_gene, time) %>% summarise(groupMean=mean(normalized))
+
+notm_plotlist_cutoff <- notm_plotlist_beforecutoff %>% filter(groupMean > Set_cutoff) %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+nrow(notm_plotlist_beforecutoff %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()) #この値をMAplotのx軸に使用
+nrow(notm_plotlist_cutoff) #解析対象を絞る　(後の全体のクラスタリングに使用)
+
+
+```
+
+```{r norm_plotlist_all}
+
+norm_plotlist_all %>% readr::write_csv("Norm_deftable_all_3T3Dox_last200811__cal20201015.csv")
+
+notm_plotlist_beforecutoff %>% readr::write_csv("Norm_groupMean_select_3T3Dox_last200811__cal20201015.csv")
+notm_plotlist_cutoff  %>% readr::write_csv("Norm_groupMean_select_cutoff10_3T3Dox_last200811__cal20201015.csv")
+
+nrow(norm_plotlist_all)
+
+nrow(notm_plotlist_beforecutoff) #[1] 86828
+nrow(notm_plotlist_cutoff)
+
+```
+
+
+```{r maplot draw, fig.width = 7, fig.height = 8}
+
+re_all <- readr::read_csv( "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/2gun/BRB0432lane2noumi_H3mm18_Dox_resultsall_fdr0p1__final191205_last200811.csv")
+
+nrow(re_all) #[1] 86828
+
+### 
+
+re_select_plot <- re_all %>% filter(aspect %in% c("group_UI_Doxplus_vs_minus","group_0h_Doxplus_vs_minus","group_24h_Doxplus_vs_minus","group_48h_Doxplus_vs_minus")) %>% mutate(time=case_when(aspect=="group_UI_Doxplus_vs_minus"~"UI",aspect=="group_0h_Doxplus_vs_minus"~"0h",aspect=="group_24h_Doxplus_vs_minus"~"24h",aspect=="group_48h_Doxplus_vs_minus"~"48h",TRUE ~ "FALSE"))  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% left_join(notm_plotlist_beforecutoff)
+
+re_select_plot %>% readr::write_csv("./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_DEG_time_MAplotdata.csv")
+
+####
+
+Daymean <- re_select_plot %>% group_by(time) %>% summarise(DayMean=mean(groupMean))
+Mean_color <- "#B8860B"
+
+Daymean
+
+Allgene_num <- re_select_plot %>% dplyr::select(ens_gene) %>% unique() %>% nrow()
+
+
+```
+
+
+
+```{r MAplot DEGs, fig.width = 6, fig.height = 10}
+
+f_DEG_in <- function(x) x %>% filter(padj<0.1)
+f_DEG_out <- function(x) x %>% filter((!(padj<0.1))|is.na(padj))
+
+
+f_inFC_degin <- function(x) x %>% f_DEG_in %>% filter(!(abs(log2FoldChange) > 5.0))
+f_inFC_degout <- function(x) x %>% f_DEG_out %>% filter(!(abs(log2FoldChange) > 5.0))
+
+f_overFC_up_degin <- function(x) x %>% f_DEG_in %>% filter(log2FoldChange > 5.0) %>% mutate(log2FoldChange=5.0) 
+f_overFC_down_degin <- function(x) x %>% f_DEG_in %>% filter(log2FoldChange < -5.0) %>% mutate(log2FoldChange=-5.0)
+f_overFC_up_degout <- function(x) x %>% f_DEG_out %>% filter(log2FoldChange > 5.0) %>% mutate(log2FoldChange=5.0)
+f_overFC_down_degout <- function(x) x %>% f_DEG_out %>% filter(log2FoldChange < -5.0) %>% mutate(log2FoldChange=-5.0)
+
+
+### 全て
+re_select_plot %>% group_by(aspect) %>% summarise(n())
+
+### DEG
+re_select_plot %>% f_DEG_in %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_inFC_degin %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_up_degin %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_down_degin %>% group_by(aspect) %>% summarise(n())
+
+### DEG 以外
+re_select_plot %>% f_DEG_out %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_inFC_degout %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_up_degout %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_down_degout %>% group_by(aspect) %>% summarise(n())
+
+ddddddddd <- re_select_plot  %>% f_DEG_in %>% mutate(FC_updown = case_when(log2FoldChange>0~"Up", log2FoldChange<0~"Down")) %>% mutate(FC_updown=factor(FC_updown,c("Up","Down"))) %>% arrange(time,FC_updown)
+eeeeeeeee <- ddddddddd  %>% group_by(aspect,time,FC_updown) %>% summarise(count=n()) %>% arrange(time)
+
+print(eeeeeeeee)
+
+gggglabel <- paste("NIH3T3 H3mm18 Doxplus_vs_minus:", Allgene_num, "genes,",
+                   eeeeeeeee$time[1],":", eeeeeeeee$FC_updown[1],eeeeeeeee$count[1],
+                   ", ",eeeeeeeee$time[2],":", eeeeeeeee$FC_updown[2],eeeeeeeee$count[2],",",eeeeeeeee$FC_updown[3],eeeeeeeee$count[3],
+                   ", ",eeeeeeeee$time[4],":", eeeeeeeee$FC_updown[4],eeeeeeeee$count[4],",",eeeeeeeee$FC_updown[5],eeeeeeeee$count[5],
+                   ", ",eeeeeeeee$time[6],":", eeeeeeeee$FC_updown[6],eeeeeeeee$count[6],",",eeeeeeeee$FC_updown[7],eeeeeeeee$count[7],sep=" ")
+
+#gggglabel <- paste("NIH3T3 H3mm18 Doxplus_vs_minus:", Allgene_num, "genes,",
+#                   "G:",eeeeeeeee$FC_updown[1],eeeeeeeee$count[1],",",eeeeeeeee$FC_updown[2],eeeeeeeee$count[2],
+#                   ",","D72:",eeeeeeeee$FC_updown[3],eeeeeeeee$count[3],",",eeeeeeeee$FC_updown[4],eeeeeeeee$count[4],sep=" ")
+print(gggglabel)
+
+######
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2) +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4))
+
+#+ scale_color_manual(values = c("#ff0000","#ff0000","#000000")) 
+
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+plot(ggmaplot)
+
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4))
+
+#+ scale_color_manual(values = c("#ff0000","#ff0000","#000000")) 
+
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+plot(ggmaplot)
+
+######
+## FC over5も出力
+
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4))
+
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+plot(ggmaplot)
+
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4))
+
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean_over5.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+plot(ggmaplot)
+
+```

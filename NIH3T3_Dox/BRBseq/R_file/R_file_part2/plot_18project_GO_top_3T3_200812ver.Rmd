@@ -1,0 +1,324 @@
+---
+title: "plot_18project_GO_top_3T3_200812ver"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+by A. Kuwakado
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R") #ITO
+#source("/home/ito_mirror/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+count <- dplyr::count
+rename <- dplyr::rename
+```
+
+
+
+
+```{r load data and filter top}
+# filter GO top 20200526 ver
+# 各クラスターのCount (Gene Ratio) が高いもの、p.adjustが小さいもの、pvalueが小さいものを取り出す。
+
+# 3T3 Top5
+file_3t3 <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/LRT/clusterProfile/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans_BPfdr0p1_generatio_genename.csv"
+#file_3t3 <- "/home/akuwakado/makeplot_18project/Inputfile/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans_BPfdr0p1_generatio_genename.csv"
+data3t3_rankall <- readr::read_csv(file_3t3) %>% group_by(cluster) %>% arrange(desc(Count), p.adjust, pvalue) %>% mutate(rank=row_number())
+data3t3 <- data3t3_rankall %>% filter(rank<=5)
+
+
+print(data3t3)
+
+filename <- paste("./Outputfile/","Top5__",basename(file_3t3),sep="")
+print(filename)
+data3t3 %>% readr::write_csv(filename) 
+
+filename <- paste("./Outputfile/","RankAll__",basename(file_3t3),sep="")
+print(filename)
+data3t3_rankall %>% readr::write_csv(filename) 
+
+
+```
+
+
+# plot 3T3 GO
+一度に描画 （使えそう）
+
+```{r plotfacet tate 3T3, fig.width = 8, fig.height = 5}
+
+plot_3t3 <- data3t3 %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+
+xmax=0.175
+xmin=0.085
+
+all_break <- c(3,6,9,12,15)
+
+sort_3t3_all <- plot_3t3 %>% arrange(desc(rank))
+
+gggU <- plot_3t3 %>% arrange(desc(rank)) %>% mutate(Description =factor(Description,sort_3t3_all$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~cluster,scales = "free_y",ncol=1)
+
+gggU0 <- plot_3t3 %>% arrange(desc(rank)) %>% mutate(Description =factor(Description,sort_3t3_all$Description))  %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~cluster,scales = "free_y",ncol=1)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__clusterAll_Top5_BPfdr0p1_plot1.pdf",sep=""), width = 8, height = 5, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__clusterAll_Top5_BPfdr0p1_plot1_none.pdf",sep=""), width = 4, height = 5, dpi = 120,limitsize = FALSE)
+
+
+
+```
+
+```{r plotfacet tate 3T3 2, fig.width = 8, fig.height = 3}
+
+plot_3t3 <- data3t3 %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+
+xmax=0.175
+xmin=0.085
+
+all_break <- c(3,6,9,12,15)
+
+sort_3t3_all2 <- plot_3t3 %>% mutate(cluster=factor(cluster,c("cluster4","cluster3","cluster2","cluster1"))) %>% arrange(cluster, desc(rank))
+
+gggU <- plot_3t3 %>% mutate(Description =factor(Description,sort_3t3_all2$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+gggU0 <- plot_3t3 %>% mutate(Description =factor(Description,sort_3t3_all2$Description))   %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=all_break) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__clusterAll_Top5_BPfdr0p1_plot2.pdf",sep=""), width = 8, height = 3.5, dpi = 120,limitsize = FALSE)
+#print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__clusterAll_Top5_BPfdr0p1_plot2_none.pdf",sep=""), width = 3.5, height = 3.5, dpi = 120,limitsize = FALSE)
+
+
+
+```
+
+```{r plot 3T3}
+
+plot_3t3 <- data3t3 %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+
+plot_3t3 %>% summarize(max=max(Gene_ratio),min=min(Gene_ratio))
+# A tibble: 3 x 3
+#  cluster     max    min
+#  <chr>     <dbl>  <dbl>
+#1 cluster2 0.154  0.0962
+#2 cluster3 0.169  0.124 
+#3 cluster4 0.0938 0.0938
+
+xmax=0.175
+xmin=0.085
+
+#xmax=0.18
+#xmin=0.10
+
+#xmax=0.010
+#xmin=0.090
+
+
+#xmax=0.18
+#xmin=0.09
+# + xlim(xmin,xmax)
+
+
+#----#
+
+sort_mat <- plot_3t3 %>% filter(cluster=="cluster2") %>% arrange(desc(rank))
+
+
+gggU <- plot_3t3 %>% filter(cluster=="cluster2")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+
+
+gggU0 <- plot_3t3 %>% filter(cluster=="cluster2")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__cluster2_Top5_BPfdr0p1_plot.pdf",sep=""), width = 8, height = 2, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__cluster2_Top5_BPfdr0p1_plot_none.pdf",sep=""), width = 3, height = 2, dpi = 120,limitsize = FALSE)
+
+
+#----#
+
+
+sort_mat <- plot_3t3 %>% filter(cluster=="cluster3") %>% arrange(desc(rank))
+
+
+gggU <- plot_3t3 %>% filter(cluster=="cluster3")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+
+
+gggU0 <- plot_3t3 %>% filter(cluster=="cluster3")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__cluster3_Top5_BPfdr0p1_plot.pdf",sep=""), width = 8, height = 2, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__cluster3_Top5_BPfdr0p1_plot_none.pdf",sep=""), width = 3, height = 2, dpi = 120,limitsize = FALSE)
+
+
+#----#
+
+#----#
+
+
+sort_mat <- plot_3t3 %>% filter(cluster=="cluster4") %>% arrange(desc(rank))
+
+
+gggU <- plot_3t3 %>% filter(cluster=="cluster4")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1))+ xlim(xmin,xmax)
+
+
+
+gggU0 <- plot_3t3 %>% filter(cluster=="cluster4")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1))+ xlim(xmin,xmax)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__cluster4_Top5_BPfdr0p1_plot.pdf",sep=""), width = 8, height = 2, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__cluster4_Top5_BPfdr0p1_plot_none.pdf",sep=""), width = 3, height = 2, dpi = 120,limitsize = FALSE)
+
+
+#----#
+
+#+++++++++++++++++++++++++#
+
+```
+
+
+
+
+
+```{r plot3 3T3}
+
+#set_size <- function(x) ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) 
+
+
+#plot_3t3 %>% filter(cluster=="cluster2")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) 
+
+
+plot_3t3 <- data3t3 %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+
+plot_3t3 %>% summarize(max=max(Gene_ratio),min=min(Gene_ratio))
+# A tibble: 3 x 3
+#  cluster     max    min
+#  <chr>     <dbl>  <dbl>
+#1 cluster2 0.154  0.0962
+#2 cluster3 0.169  0.124 
+#3 cluster4 0.0938 0.0938
+
+plot_3t3 %>% summarize(max=max(Count),min=min(Count))
+## A tibble: 3 x 3
+#  cluster    max   min
+#  <chr>    <dbl> <dbl>
+#1 cluster2     8     5
+#2 cluster3    15    11
+#3 cluster4     3     3
+
+xmax=0.175
+xmin=0.085
+
+#xmax=0.18
+#xmin=0.10
+
+#xmax=0.010
+#xmin=0.090
+
+
+#xmax=0.18
+#xmin=0.09
+# + xlim(xmin,xmax)
+
+
+#+ scale_size("New legend",breaks=c(3,6,9,12,15),labels=c(3,6,9,12,15))
+
+#----#
+
+
+#geom_point(aes(col=v, size=v), alpha=0.75) +
+#scale_size_area(max_size = 10,breaks=c(10,25,50,100,250,500))
+
+sort_mat <- plot_3t3 %>% filter(cluster=="cluster2") %>% arrange(desc(rank))
+
+
+gggU <- plot_3t3 %>% filter(cluster=="cluster2")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+
+
+gggU0 <- plot_3t3 %>% filter(cluster=="cluster2")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__cluster2_Top5_BPfdr0p1_plot3.pdf",sep=""), width = 8, height = 2, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__cluster2_Top5_BPfdr0p1_plot3_none.pdf",sep=""), width = 3, height = 2, dpi = 120,limitsize = FALSE)
+
+
+#----#
+
+
+sort_mat <- plot_3t3 %>% filter(cluster=="cluster3") %>% arrange(desc(rank))
+
+
+gggU <- plot_3t3 %>% filter(cluster=="cluster3")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+
+gggU0 <- plot_3t3 %>% filter(cluster=="cluster3")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+ 
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__cluster3_Top5_BPfdr0p1_plot3.pdf",sep=""), width = 8, height = 2, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__cluster3_Top5_BPfdr0p1_plot3_none.pdf",sep=""), width = 3, height = 2, dpi = 120,limitsize = FALSE)
+
+
+#----#
+
+#----#
+
+
+sort_mat <- plot_3t3 %>% filter(cluster=="cluster4") %>% arrange(desc(rank))
+
+
+gggU <- plot_3t3 %>% filter(cluster=="cluster4")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+
+gggU0 <- plot_3t3 %>% filter(cluster=="cluster4")  %>% mutate(Description =factor(Description,sort_mat$Description)) %>% ggplot(aes(x=Gene_ratio, y=Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + scale_size_area(breaks=c(3,4,5,6,7,8,9,10,11,12,13,14,15)) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax)
+
+print(gggU)
+ggsave(gggU,file=paste("./Outputfile/","3T3_BRB0432__cluster4_Top5_BPfdr0p1_plot3.pdf",sep=""), width = 8, height = 2, dpi = 120,limitsize = FALSE)
+print(gggU0)
+ggsave(gggU0,file=paste("./Outputfile/","3T3_BRB0432__cluster4_Top5_BPfdr0p1_plot3_none.pdf",sep=""), width = 3, height = 2, dpi = 120,limitsize = FALSE)
+
+
+#----#
+
+#+++++++++++++++++++++++++#
+
+```

@@ -1,0 +1,295 @@
+---
+title: "[Last 2000909, Final 191205-1212, 18project, 3T3] BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811_add200910 20200929(makeplot) _1005add (umi補正なし,fdr0.1)"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+rename <- dplyr::rename #191203
+count <- dplyr::count #191203
+
+
+
+```
+
+### Parameters
+
+*modify here*
+
+```{r params}
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/deftable_BRB_noumi_new_190520_Last20200811ver.txt"
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+
+#deftable <- "deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <- quo(type != "C2C12")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+#myaes <- aes(colour=type, shape=revcro, label=read, size=count)
+#myaes <- aes(colour=type, shape=revcro, label=read)
+
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,size=count,label=replicate)
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day,size=count,label=f_m)
+
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり
+myaes2 <- aes(colour=time,shape=type) #kuwa add
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+
+
+model <- ~group
+#model <- ~type+growth+growth:type
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+
+# controls should be placed in the right
+contrast <- list(
+  
+  group_UI_Doxplus_vs_minus = c("group", "BRB_UI_DoxPlus", "BRB_UI_DoxMinus"),
+  group_0h_Doxplus_vs_minus = c("group", "BRB_0h_DoxPlus", "BRB_0h_DoxMinus"),
+  group_24h_Doxplus_vs_minus = c("group", "BRB_24h_DoxPlus", "BRB_24h_DoxMinus"),
+  group_48h_Doxplus_vs_minus = c("group", "BRB_48h_DoxPlus", "BRB_48h_DoxMinus")
+  
+  
+  #group_UI_Doxplus_vs_minus = c("group", "Doxplus_UI", "Doxminus_UI"),
+  #group_Diff0h_Doxplus_vs_minus = c("group", "Doxplus_Diff0h", "Doxminus_Diff0h"),
+  #group_Diff24h_Doxplus_vs_minus = c("group", "Doxplus_Diff24h", "Doxminus_Diff24h"),
+  #group_Diff48h_Doxplus_vs_minus = c("group", "Doxplus_Diff48h", "Doxminus_Diff48h")
+  
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+#nrow(e2g)
+##readr::write_csv(e2g,"ensemble_list_asia_fin200523.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest_fin200523.csv.csv")
+##readr::write_csv(e2g,"ensemble_list_useast.csv")
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/ensemble_list_useast.csv")
+
+annotate <- partial(right_join,e2g,by="ens_gene")
+nrow(e2g)
+
+```
+
+
+### normalized count ()
+
+BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811_add200910
+
+```{r load data GO}
+
+degcluster_csv <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/LRT/DEG_fdr0p1__BRB0432lane2noumi_H3mm18_Dox_kmeans4__cluster_result.csv") %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster)
+
+#-log2FoldChange,-lfcSE,-stat
+
+zscore_type <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/H3mm18KO_3T3_Dox__zscore_type_all.csv")
+colnames(zscore_type)
+```
+
+
+
+### normalized count plot
+
+```{r normCount Matome loaddata}
+# 2019 12月作成
+
+#re <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_results__final200915.csv")
+
+norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/BRB0432lane2noumi_H3mm18_Dox__normCount__final191205_last200811.csv") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+
+norm_plotlist_all_clus <- norm_plotlist_all_name %>% left_join(degcluster_csv)
+
+# %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster) %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+# %>% left_join(degcluster_csv) %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster,all_of(BRB_z_list)) %>% arrange(cluster,ext_gene)
+                                          
+#norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/Norm_deftable_all_final200915__genename.csv") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))) #191206 追加
+
+nrow(norm_plotlist_all_name)
+print(norm_plotlist_all_name %>% dplyr::select(ens_gene) %>% unique() %>% nrow())
+nrow(norm_plotlist_all_clus)
+
+```
+
+
+norm_plotlist_all "Norm_deftable_all_final200915.csv" を使う
+
+```{r normcount, fig.width=12,fig.height=9}
+
+plotgene_list <- c("Col3a1","Acta2","Tnnt2","Tnni2","Acta1","Myh3","Myog","Csrp3","Myorg","Des","Myod1","Gata4","Actb","Gapdh","Rpl27")
+length(plotgene_list)
+degcluster_csv %>% filter(ext_gene %in% plotgene_list)
+
+#ext_gene %in% c("Slc38a2","Inhba","Acta1","Myog","Myh9","Rpl13")
+
+cluster1main_list <- c("Slc38a2")
+cluster2main_list <- c("Inhba")
+cluster3main_list <- c("Col3a1","Des","Tnnt2","Myh3","Acta2","Myog","Acta1")
+cluster4main_list <- c("Myh9")
+plothousekeep_list <- c("Rpl13","Rpl27","Actb","Gapdh")
+
+
+###
+plot_list <- c(cluster1main_list,cluster2main_list,cluster3main_list,cluster4main_list,plothousekeep_list)
+
+
+#======== Change every data ここで順番を変更 ========#
+
+#-------#
+
+nbl <- norm_plotlist_all_clus %>% filter(ext_gene %in% plot_list) %>% mutate(ext_gene=factor(ext_gene,plot_list))
+
+#====================================================#
+
+f_gene_norm <- function(x) x %>% group_by(group, type, time, ext_gene) %>% summarise(avg=mean(normalized),se=sd(normalized)/sqrt(length(normalized))) %>% ungroup()
+
+#----#
+nbl %>% group_by(group, type, time) %>% summarise()
+#----#
+
+#face="italic"
+#, axis.text.x = element_text(angle = 45, hjust = 1) #X軸のラベルを傾ける場合
+#, axis.text.x = element_text(hjust = 0.5) #X軸のラベルを水平にする場合
+
+### point ###
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=3)+geom_line(size=1.0, aes(x=time,y=avg,colour=type),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()  + ylab("normalized count")
+
+file_path <- "./normCount/normCount_plot_final200811_plot1_heatmapselect201005ver.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 12, height = 8)
+
+print(gggggpp)
+
+
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=3)+geom_smooth(se=FALSE)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()  + ylab("normalized count")
+
+file_path <- "./normCount/normCount_plot_final200811_plot1_heatmapselect201005ver_smooth.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 12, height = 8)
+
+
+```
+
+```{r ggplot norm nogrid, fig.width=20,fig.height=3}
+
+### point ###
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=1)+geom_line(size=1.0, aes(x=time,y=avg,colour=type),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16), panel.grid = element_blank())+ggsci::scale_color_npg()  + ylab("normalized count") 
+file_path <- "./normCount/normCount_plot_final200811_plot1_heatmapselect201005ver_nogrid.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 25, height = 3,limitsize = FALSE)
+
+print(gggggpp)
+
+
+```
+
+

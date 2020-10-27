@@ -1,0 +1,899 @@
+---
+title: "makeAddplot__TSSpm5kb__3T3_EGFP18_Dox_20200811__20200824ver"
+output: html_notebook
+author: "Kuwakado"
+date: "2020/8/24-"
+---
+
+2020.8.11 verの図を作り直し(20200824ver)
+2020.8.11 BRBを再解析(log2FCを計算するため)、それに合わせて再解析
+
+```{r setting}
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+```
+
+```{r setup 0}
+#{r setup 0, include=FALSE} knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+maxchrom <- 19 # 19: mouse, 22: human
+
+mycolor <- ggsci::scale_color_aaas()
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+#----------------#
+
+#cluster_num <- 4 
+
+filepath_summary <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/ChIL01100111_ATAC0049L1__3T3_EGFP18_Dox__TSS_pm5kb_20200624.count.txt"
+
+# deftable 修正版
+filepath_def <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/deftable_multicov_ChIL01100111_20200501_3T3_EGFP18_UI_DoxMinus_H3p3K27acK4Kme327me3_withATAC.txt"
+
+
+
+#--- サンプルの選択 ---#
+
+folder_name <- "ChIL H3.3, H3K27ac, H3K4me3, H3K27me3, ATAC" #"ChIL_H3K27me3_H3K27me3"
+#remove_sample=c("Doxminus_UI_ATAC_4","Doxplus_UI_ATAC_4","Doxminus_D48_ATAC_1","Doxminus_D48_ATAC_4","Doxplus_D48_ATAC_4") #このサンプルを削除(20190917) <ATACの場合>
+
+#use <- quo(!(sample %in% remove_sample)) #このサンプルを削除(20190917)
+
+#--- multiBamSummary の略 ---#
+# データ保存用のpath
+#csvfilepath <- basename(filepath_summary) %>% sub(".count.txt", "__", .)
+csvfilepath <- basename(filepath_summary) %>% sub(".count.txt", "", .)  %>% sub("ChIL01100111_ATAC0049L1__3T3_EGFP18_Dox__", "", .)
+print(csvfilepath)
+
+
+```
+
+```{r load summary plot FC Cluster H3p3 clus3}
+
+H3p3clus3cutffgenelist <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/log2FC/tables/Plot_log2FC_ChILATACBRB_cutoff10__withCluster__H3p3clus3.csv"
+
+
+H3p3clus3cutffCorr <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/log2FC/tables/PLotshow_H3p3clus3_All_and_BRBclus3_summary.csv"
+
+#Cortest_H3p3clus3All_file <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/log2FC/tables/Cortest_result_spearman_H3p3clus3All_forPlot.csv"
+#Cortest_H3p3clus3BRBclus3_file <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/log2FC/tables/Cortest_result_spearman_H3p3clus3BRBclus3_forPlot.csv"
+#Cortest_H3p3clus3All <- readr::read_csv(Cortest_H3p3clus3All_file)  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+#Cortest_H3p3clus3BRBclus3 <- readr::read_csv(Cortest_H3p3clus3BRBclus3_file)  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+
+
+plot_all_FC_cutoff_H3p3clus3 <- readr::read_csv(H3p3clus3cutffgenelist, col_types = "cccccdddddddiicc") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)# plot中のリストのみ
+
+summa__vsBRB_H3p3clus3_ALL_BRBclus3 <-  readr::read_csv(H3p3clus3cutffCorr)  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+
+
+
+
+f_gene_H3p3clus3 <- function(x) x %>% filter(H3p3cluster=="3")
+f_gene_BRBclus3 <- function(x) x %>% filter(BRBDEGcluster=="3")
+list_gene_qpcr <-  c("Acta1","Myh3","Ttn","Myog")
+
+```
+
+
+### Calculate Correlation H3.3 etc. vs BRB (All & BRB DEG Cluster3)
+
+正規分布としてピアソンの相関係数を求める
+
+```{r corre H3p3 cluster3 All UI-48h H3p3_BRB spearman}
+
+Time_list <- c("UI","0h","24h","48h")
+
+
+Count_FC_cutoff_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% ungroup() %>% group_by(time) %>% summarise(Plot_genes=n()) #図中の数
+
+
+#######
+print("~~ H3p3_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clusterAll: H3p3_BRB --"))
+  corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3$H3p3, corr_H3p3clus3$BRB, method="pearson")
+  #print(tttttt)
+  
+  if (i == 1) { 
+      cortest_result_s <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".") %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("H3p3", "BRB",sep="_"))
+  } 
+  else {
+      ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("H3p3", "BRB",sep="_"))
+      cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+  }
+}
+
+print("~~ H3K4me3_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clusterAll: H3K4me3_BRB --"))
+  corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3$H3K4me3, corr_H3p3clus3$BRB, method="pearson")
+  #print(tttttt)
+  
+  ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("H3K4me3", "BRB",sep="_"))
+  cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+}
+
+print("~~ H3K27ac_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clusterAll: H3K27ac_BRB --"))
+  corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3$H3K27ac, corr_H3p3clus3$BRB, method="pearson")
+  #print(tttttt)
+  
+
+  ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("H3K27ac", "BRB",sep="_"))
+  cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+}
+
+print("~~ H3K27me3_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clusterAll: H3K27me3_BRB --"))
+  corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3$H3K27me3, corr_H3p3clus3$BRB, method="pearson")
+  #print(tttttt)
+  
+
+  ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("H3K27me3", "BRB",sep="_"))
+  cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+}
+
+print("~~ ATAC_BRB ~~")
+for (i in 1:length(Time_list)) {
+
+  if ((i == 1)|(i == 4)) { 
+    print(paste("-----",Time_list[i], "--- H3p3clusterAll: ATAC_BRB --"))
+    corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+    tttttt <- cor.test(corr_H3p3clus3$ATAC, corr_H3p3clus3$BRB, method="pearson")
+    #print(tttttt)
+
+    ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("ATAC", "BRB",sep="_"))
+    cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+  } 
+}
+
+print("~~ H3p3_ATAC ~~")
+for (i in 1:length(Time_list)) {
+
+  if ((i == 1)|(i == 4)) { 
+    print(paste("-----",Time_list[i], "--- H3p3clusterAll: H3p3_ATAC --"))
+    corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+    tttttt <- cor.test(corr_H3p3clus3$H3p3, corr_H3p3clus3$ATAC, method="pearson")
+    #print(tttttt)
+
+    ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3All",Compare=paste("H3p3", "ATAC",sep="_"))
+    cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+  } 
+}
+
+
+cortest_result_s_H3p3clus3All <- cortest_result_s %>% group_by(target,time,Compare) %>% spread(key="Cor_test",value=Value)  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+
+cortest_result_s_H3p3clus3All <- cortest_result_s_H3p3clus3All %>% left_join(Count_FC_cutoff_H3p3clus3)
+print(cortest_result_s_H3p3clus3All)
+
+cortest_result_s_H3p3clus3All %>% readr::write_csv("./log2FC/tables_pearson/Cortest_result_pearson_H3p3clus3All.csv")
+
+
+```
+
+
+
+```{r corre H3p3 cluster3 BRB cluster3 UI-48h H3p3_BRB pearson}
+
+Time_list <- c("UI","0h","24h","48h")
+Count_FC_cutoff_H3p3clus3_BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% f_gene_BRBclus3 %>% ungroup() %>% group_by(time) %>% summarise(Plot_genes=n()) #図中の数(BRB DEG cluster3のみ)
+
+
+
+#######
+print("~~ H3p3_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clus3BRBclus3: H3p3_BRB --"))
+  corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3BRBclus3$H3p3, corr_H3p3clus3BRBclus3$BRB, method="pearson")
+  #print(tttttt)
+  
+  if (i == 1) { 
+      cortest_result_s <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".") %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("H3p3", "BRB",sep="_"))
+  } 
+  else {
+      ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("H3p3", "BRB",sep="_"))
+      cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+  }
+}
+
+print("~~ H3K4me3_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clus3BRBclus3: H3K4me3_BRB --"))
+  corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3BRBclus3$H3K4me3, corr_H3p3clus3BRBclus3$BRB, method="pearson")
+  #print(tttttt)
+  
+  ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("H3K4me3", "BRB",sep="_"))
+  cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+}
+
+print("~~ H3K27ac_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clus3BRBclus3: H3K27ac_BRB --"))
+  corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3BRBclus3$H3K27ac, corr_H3p3clus3BRBclus3$BRB, method="pearson")
+  #print(tttttt)
+  
+
+  ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("H3K27ac", "BRB",sep="_"))
+  cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+}
+
+print("~~ H3K27me3_BRB ~~")
+for (i in 1:length(Time_list)) {
+  print(paste("-----",Time_list[i], "--- H3p3clus3BRBclus3: H3K27me3_BRB --"))
+  corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+  tttttt <- cor.test(corr_H3p3clus3BRBclus3$H3K27me3, corr_H3p3clus3BRBclus3$BRB, method="pearson")
+  #print(tttttt)
+  
+
+  ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("H3K27me3", "BRB",sep="_"))
+  cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+}
+
+print("~~ ATAC_BRB ~~")
+for (i in 1:length(Time_list)) {
+
+  if ((i == 1)|(i == 4)) { 
+    print(paste("-----",Time_list[i], "--- H3p3clus3BRBclus3: ATAC_BRB --"))
+    corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+    tttttt <- cor.test(corr_H3p3clus3BRBclus3$ATAC, corr_H3p3clus3BRBclus3$BRB, method="pearson")
+    #print(tttttt)
+
+    ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("ATAC", "BRB",sep="_"))
+    cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+  } 
+}
+
+print("~~ H3p3_ATAC ~~")
+for (i in 1:length(Time_list)) {
+
+  if ((i == 1)|(i == 4)) { 
+    print(paste("-----",Time_list[i], "--- H3p3clus3BRBclus3: H3p3_ATAC --"))
+    corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+    tttttt <- cor.test(corr_H3p3clus3BRBclus3$H3p3, corr_H3p3clus3BRBclus3$ATAC, method="pearson")
+    #print(tttttt)
+
+    ssssss <- unlist(tttttt)  %>% as.data.frame() %>% tibble::rownames_to_column("Cor_test")  %>% as_tibble() %>% dplyr::rename(Value=".")  %>% mutate(time=Time_list[i],target="H3p3clus3BRBclus3",Compare=paste("H3p3", "ATAC",sep="_"))
+    cortest_result_s <- bind_rows(cortest_result_s, ssssss)
+  } 
+}
+
+
+cortest_result_s_H3p3clus3BRBclus3 <- cortest_result_s %>% group_by(target,time,Compare) %>% spread(key="Cor_test",value=Value)  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+
+cortest_result_s_H3p3clus3BRBclus3 <- cortest_result_s_H3p3clus3BRBclus3 %>% left_join(Count_FC_cutoff_H3p3clus3_BRBclus3)
+print(cortest_result_s_H3p3clus3BRBclus3)
+
+cortest_result_s_H3p3clus3BRBclus3 %>% readr::write_csv("./log2FC/tables_pearson/Cortest_results_pearson_H3p3clus3BRBclus3.csv")
+
+
+```
+
+
+
+```{r plot log2FC summary corrtest pearson}
+
+Cortest_H3p3clus3All <- readr::read_csv("./log2FC/tables_pearson/Cortest_result_pearson_H3p3clus3All.csv") %>% mutate(text=paste(" All (",Plot_genes,") pearson Cor: ",sprintf("%4.3e", estimate.cor),", p.val: ",sprintf("%4.3e", p.value),sep=""))   %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time) %>% mutate(Compare1=Compare) %>% separate(Compare1,into=c("seq1","seq2"),sep="_")
+Cortest_H3p3clus3BRBclus3 <- readr::read_csv("./log2FC/tables_pearson/Cortest_results_pearson_H3p3clus3BRBclus3.csv")  %>% mutate(text=paste("Clus3 (",Plot_genes,") pearson Cor: ",sprintf("%4.3e", estimate.cor),", p.val: ",sprintf("%4.3e", p.value),sep=""))  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time) %>% mutate(Compare1=Compare) %>% separate(Compare1,into=c("seq1","seq2"),sep="_")
+
+Cortest_H3p3clus3All %>% readr::write_csv("./log2FC/tables_pearson/Cortest_result_pearson_H3p3clus3All_forPlot.csv")
+Cortest_H3p3clus3BRBclus3 %>% readr::write_csv("./log2FC/tables_pearson/Cortest_result_pearson_H3p3clus3BRBclus3_forPlot.csv")
+```
+
+
+
+
+```{r corre H3p3 All & cluster3 BRB cluster3 UI-48h H3p3_BRB cal ellipse}
+
+Time_list <- c("UI","0h","24h","48h")
+
+
+print("H3p3clus3All")
+print("~~ H3p3 & H3K4me3 & H3K27ac & H3K27me3 & ATAC & BRB ~~")
+for (i in 1:length(Time_list)) {
+  corr_H3p3clus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter((time==Time_list[i]))
+  print(paste(Time_list[i],nrow(corr_H3p3clus3)))
+  if (i == 1) { 
+      stat_result <- data.frame(time=Time_list[i],seq="H3p3",mean=mean(corr_H3p3clus3$H3p3),sd=sd(corr_H3p3clus3$H3p3),size=length(corr_H3p3clus3$H3p3)) %>% as_tibble()
+      stat_result <- data.frame(time=Time_list[i],seq="H3K4me3",mean=mean(corr_H3p3clus3$H3K4me3),sd=sd(corr_H3p3clus3$H3K4me3),size=length(corr_H3p3clus3$H3K4me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27ac",mean=mean(corr_H3p3clus3$H3K27ac),sd=sd(corr_H3p3clus3$H3K27ac),size=length(corr_H3p3clus3$H3K27ac)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27me3",mean=mean(corr_H3p3clus3$H3K27me3),sd=sd(corr_H3p3clus3$H3K27me3),size=length(corr_H3p3clus3$H3K27me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="ATAC",mean=mean(corr_H3p3clus3$ATAC),sd=sd(corr_H3p3clus3$ATAC),size=length(corr_H3p3clus3$ATAC)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="BRB",mean=mean(corr_H3p3clus3$BRB),sd=sd(corr_H3p3clus3$BRB),size=length(corr_H3p3clus3$BRB)) %>% as_tibble() %>%  bind_rows(stat_result)
+
+  }
+  else {
+      stat_result <- data.frame(time=Time_list[i],seq="H3p3",mean=mean(corr_H3p3clus3$H3p3),sd=sd(corr_H3p3clus3$H3p3),size=length(corr_H3p3clus3$H3p3)) %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K4me3",mean=mean(corr_H3p3clus3$H3K4me3),sd=sd(corr_H3p3clus3$H3K4me3),size=length(corr_H3p3clus3$H3K4me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27ac",mean=mean(corr_H3p3clus3$H3K27ac),sd=sd(corr_H3p3clus3$H3K27ac),size=length(corr_H3p3clus3$H3K27ac)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27me3",mean=mean(corr_H3p3clus3$H3K27me3),sd=sd(corr_H3p3clus3$H3K27me3),size=length(corr_H3p3clus3$H3K27me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="ATAC",mean=mean(corr_H3p3clus3$ATAC),sd=sd(corr_H3p3clus3$ATAC),size=length(corr_H3p3clus3$ATAC)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="BRB",mean=mean(corr_H3p3clus3$BRB),sd=sd(corr_H3p3clus3$BRB),size=length(corr_H3p3clus3$BRB)) %>% as_tibble() %>%  bind_rows(stat_result)
+  }
+}
+
+stat_result__H3p3clus3All <- stat_result %>% mutate(target="H3p3clus3All") %>% mutate(time=factor(time, c("UI", "0h","24h","48h")))  %>% mutate(seq=factor(seq, c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB"))) %>% arrange(time, seq)
+stat_result__H3p3clus3All %>% readr::write_csv("./log2FC/tables_stat/stat_results_H3p3clus3All.csv")
+
+
+
+print("H3p3clus3BRBclus3")
+print("~~ H3p3 & H3K4me3 & H3K27ac & H3K27me3 & ATAC & BRB ~~")
+for (i in 1:length(Time_list)) {
+  corr_H3p3clus3BRBclus3 <- plot_all_FC_cutoff_H3p3clus3 %>% filter(BRBDEGcluster=="3")%>% filter((time==Time_list[i]))
+  print(paste(Time_list[i],nrow(corr_H3p3clus3BRBclus3)))
+  if (i == 1) { 
+      stat_result <- data.frame(time=Time_list[i],seq="H3p3",mean=mean(corr_H3p3clus3BRBclus3$H3p3),sd=sd(corr_H3p3clus3BRBclus3$H3p3),size=length(corr_H3p3clus3BRBclus3$H3p3)) %>% as_tibble()
+      stat_result <- data.frame(time=Time_list[i],seq="H3K4me3",mean=mean(corr_H3p3clus3BRBclus3$H3K4me3),sd=sd(corr_H3p3clus3BRBclus3$H3K4me3),size=length(corr_H3p3clus3BRBclus3$H3K4me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27ac",mean=mean(corr_H3p3clus3BRBclus3$H3K27ac),sd=sd(corr_H3p3clus3BRBclus3$H3K27ac),size=length(corr_H3p3clus3BRBclus3$H3K27ac)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27me3",mean=mean(corr_H3p3clus3BRBclus3$H3K27me3),sd=sd(corr_H3p3clus3BRBclus3$H3K27me3),size=length(corr_H3p3clus3BRBclus3$H3K27me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="ATAC",mean=mean(corr_H3p3clus3BRBclus3$ATAC),sd=sd(corr_H3p3clus3BRBclus3$ATAC),size=length(corr_H3p3clus3BRBclus3$ATAC)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="BRB",mean=mean(corr_H3p3clus3BRBclus3$BRB),sd=sd(corr_H3p3clus3BRBclus3$BRB),size=length(corr_H3p3clus3BRBclus3$BRB)) %>% as_tibble() %>%  bind_rows(stat_result)
+
+  }
+  else {
+      stat_result <- data.frame(time=Time_list[i],seq="H3p3",mean=mean(corr_H3p3clus3BRBclus3$H3p3),sd=sd(corr_H3p3clus3BRBclus3$H3p3),size=length(corr_H3p3clus3BRBclus3$H3p3)) %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K4me3",mean=mean(corr_H3p3clus3BRBclus3$H3K4me3),sd=sd(corr_H3p3clus3BRBclus3$H3K4me3),size=length(corr_H3p3clus3BRBclus3$H3K4me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27ac",mean=mean(corr_H3p3clus3BRBclus3$H3K27ac),sd=sd(corr_H3p3clus3BRBclus3$H3K27ac),size=length(corr_H3p3clus3BRBclus3$H3K27ac)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="H3K27me3",mean=mean(corr_H3p3clus3BRBclus3$H3K27me3),sd=sd(corr_H3p3clus3BRBclus3$H3K27me3),size=length(corr_H3p3clus3BRBclus3$H3K27me3)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="ATAC",mean=mean(corr_H3p3clus3BRBclus3$ATAC),sd=sd(corr_H3p3clus3BRBclus3$ATAC),size=length(corr_H3p3clus3BRBclus3$ATAC)) %>% as_tibble() %>%  bind_rows(stat_result)
+      stat_result <- data.frame(time=Time_list[i],seq="BRB",mean=mean(corr_H3p3clus3BRBclus3$BRB),sd=sd(corr_H3p3clus3BRBclus3$BRB),size=length(corr_H3p3clus3BRBclus3$BRB)) %>% as_tibble() %>%  bind_rows(stat_result)
+  }
+}
+
+stat_result_H3p3clus3BRBclus3 <- stat_result %>% mutate(target="H3p3clus3BRBclus3") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(seq=factor(seq, c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB"))) %>% arrange(time, seq)
+stat_result_H3p3clus3BRBclus3 %>% readr::write_csv("./log2FC/tables_stat/stat_results_H3p3clus3BRBclus3.csv")
+
+#%>% left_join(Count_FC_cutoff_H3p3clus3_BRBclus3) %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+
+
+#cortest_result_s_H3p3clus3BRBclus3 <- cortest_result_s %>% group_by(target,time,Compare) %>% spread(key="Cor_test",value=Value)  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% arrange(time)
+
+#cortest_result_s_H3p3clus3BRBclus3 <- cortest_result_s_H3p3clus3BRBclus3 %>% left_join(Count_FC_cutoff_H3p3clus3_BRBclus3)
+#print(cortest_result_s_H3p3clus3BRBclus3)
+
+
+
+
+```
+
+
+```{r matome stat}
+Seq_list <- c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB")
+
+matome_H3p3clus3All <- Cortest_H3p3clus3All %>% filter(seq2=="BRB") %>% inner_join(stat_result__H3p3clus3All %>% rename(seq1=seq,mean1=mean,sd1=sd,size1=size) %>% filter(seq1!="BRB")) %>% inner_join(stat_result__H3p3clus3All %>% rename(seq2=seq,mean2=mean,sd2=sd,size2=size) %>% filter(seq2=="BRB"))
+
+matome_H3p3clus3BRBclus3 <- Cortest_H3p3clus3BRBclus3 %>% filter(seq2=="BRB") %>% inner_join(stat_result_H3p3clus3BRBclus3 %>% rename(seq1=seq,mean1=mean,sd1=sd,size1=size) %>% filter(seq1!="BRB")) %>% inner_join(stat_result_H3p3clus3BRBclus3 %>% rename(seq2=seq,mean2=mean,sd2=sd,size2=size) %>% filter(seq2=="BRB"))
+
+matome_H3p3clus3BRBclus3 %>% readr::write_csv("./log2FC/tables_stat/matome_results_H3p3clus3BRBclus3.csv")
+matome_H3p3clus3All %>% readr::write_csv("./log2FC/tables_stat/matome_results_H3p3clus3All.csv")
+
+```
+
+
+楕円密度　参考　http://civilyarou.web.fc2.com/WANtaroHP_html5_win/f90_STAT/dir_SREG/TeX_ellipse.pdf
+
+
+```{r cal ecl}
+Time_list <- c("UI","0h","24h","48h")
+Seq_list <- c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC")
+fai <- seq(0, 2*pi, by = pi/500)
+
+#P <- 0.95
+P <- seq(0.00, 0.95, by = 0.05)
+
+
+print("H3p3clus3All")
+print("~~ H3p3 & H3K4me3 & H3K27ac & H3K27me3 & ATAC & BRB ~~")
+
+for (k in 1:length(P)) {
+  for (i in 1:length(Time_list)) {
+    for (j in 1:length(Seq_list)) {
+      ttttttt <- matome_H3p3clus3All %>% filter(seq2=="BRB") %>% filter(seq1==Seq_list[j]) %>% filter((time==Time_list[i]))
+
+      if ((Seq_list[j]=="ATAC")&(Time_list[i]=="0h"|Time_list[i]=="24h")) {
+      
+      }
+      else{
+      
+        if (k==1) print(paste(ttttttt$target, ttttttt$time, ttttttt$Compare, ttttttt$seq1, ttttttt$seq2, ttttttt$size1))
+    
+        Low_xy <- ttttttt$estimate.cor
+        mean_x <- ttttttt$mean1
+        mean_y <- ttttttt$mean2
+        sigma_x <- ttttttt$sd1
+        sigma_y <- ttttttt$sd2
+
+        ellipse_x <- mean_x + sigma_x * cos(fai) * sqrt(-2*(1.0-Low_xy*Low_xy)*log(1.0-P[k])/(1-2*Low_xy*sin(fai)*cos(fai)))
+        ellipse_y <- mean_y + sigma_y * sin(fai) * sqrt(-2*(1.0-Low_xy*Low_xy)*log(1.0-P[k])/(1-2*Low_xy*sin(fai)*cos(fai)))
+    
+        ddddddd <- data.frame(target=ttttttt$target, time=ttttttt$time,Compare=ttttttt$Compare, seq1=ttttttt$seq1,seq2=ttttttt$seq2,size=ttttttt$size1,X=ellipse_x,Y=ellipse_y,fai=fai,P=P[k],mean_x=Low_xy,mean_x=mean_x, sigma_x=sigma_x,mean_y=mean_y,sigma_y=sigma_y) %>% as_tibble()
+
+        if ((i==1)&(j==1)&(k==1)) { 
+          ellipse_result <- ddddddd
+        }      
+        else {
+          ellipse_result <- bind_rows(ellipse_result, ddddddd)
+        }
+      
+      }
+
+
+    }
+  }
+}
+
+ellipse_result_H3p3clus3All <- ellipse_result %>% mutate(target="H3p3clus3All") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(seq1=factor(seq1, c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB"))) %>% mutate(seq2=factor(seq2, c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB"))) %>% arrange(time, seq1, seq2)
+ellipse_result_H3p3clus3All %>% group_by(target, time, seq1,seq2, Compare,size) %>% summarise(count=n())
+ellipse_result_H3p3clus3All %>% group_by(target, P) %>% summarise(count=n())
+ellipse_result_H3p3clus3All %>% readr::write_csv("./log2FC/tables_stat/ellipse_results_H3p3clus3All.csv")
+
+
+
+
+print("H3p3clus3All")
+print("~~ H3p3 & H3K4me3 & H3K27ac & H3K27me3 & ATAC & BRB ~~")
+
+for (k in 1:length(P)) {
+  for (i in 1:length(Time_list)) {
+    for (j in 1:length(Seq_list)) {
+      ttttttt <- matome_H3p3clus3BRBclus3 %>% filter(seq2=="BRB") %>% filter(seq1==Seq_list[j]) %>% filter((time==Time_list[i]))
+
+      if ((Seq_list[j]=="ATAC")&(Time_list[i]=="0h"|Time_list[i]=="24h")) {
+        #ddddddd <- data.frame(target="H3p3clus3All", time=Time_list[i],Compare=paste(Seq_list[j],"BRB",sep = "_"), seq1=Seq_list[j],seq2="BRB",size=0,X=as.double("NA"),Y=as.double("NA"),fai=as.double("NA"),P=as.double("NA"),mean_x=as.double("NA"),mean_x=as.double("NA"), sigma_x=as.double("NA"),mean_y=as.double("NA"),sigma_y=as.double("NA")) %>% as_tibble()
+
+        #ellipse_result <- bind_rows(ellipse_result, ddddddd)
+      }
+      else{
+      
+        if (k==1) print(paste(ttttttt$target, ttttttt$time, ttttttt$Compare, ttttttt$seq1, ttttttt$seq2, ttttttt$size1))
+        
+        Low_xy <- ttttttt$estimate.cor
+        mean_x <- ttttttt$mean1
+        mean_y <- ttttttt$mean2
+        sigma_x <- ttttttt$sd1
+        sigma_y <- ttttttt$sd2
+
+        ellipse_x <- mean_x + sigma_x * cos(fai) * sqrt(-2*(1.0-Low_xy*Low_xy)*log(1.0-P[k])/(1-2*Low_xy*sin(fai)*cos(fai)))
+        ellipse_y <- mean_y + sigma_y * sin(fai) * sqrt(-2*(1.0-Low_xy*Low_xy)*log(1.0-P[k])/(1-2*Low_xy*sin(fai)*cos(fai)))
+    
+        ddddddd <- data.frame(target=ttttttt$target, time=ttttttt$time,Compare=ttttttt$Compare, seq1=ttttttt$seq1,seq2=ttttttt$seq2,size=ttttttt$size1,X=ellipse_x,Y=ellipse_y,fai=fai,P=P[k],mean_x=Low_xy,mean_x=mean_x, sigma_x=sigma_x,mean_y=mean_y,sigma_y=sigma_y) %>% as_tibble()
+
+          if ((i==1)&(j==1)&(k==1)) { 
+            ellipse_result <- ddddddd
+          }      
+          else {
+            ellipse_result <- bind_rows(ellipse_result, ddddddd)
+          }
+      
+      }
+
+
+    }
+  }
+}
+
+ellipse_result_H3p3clus3BRBclus3 <- ellipse_result %>% mutate(target="H3p3clus3BRBclus3") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(seq1=factor(seq1, c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB"))) %>% mutate(seq2=factor(seq2, c("H3p3","H3K4me3","H3K27ac","H3K27me3","ATAC","BRB"))) %>% arrange(time, seq1, seq2)
+ellipse_result_H3p3clus3BRBclus3 %>% group_by(target, time, seq1,seq2, Compare,size) %>% summarise(count=n())
+ellipse_result_H3p3clus3BRBclus3 %>% group_by(target, P) %>% summarise(count=n())
+ellipse_result_H3p3clus3BRBclus3 %>% readr::write_csv("./log2FC/tables_stat/ellipse_results_H3p3clus3BRBclus3.csv")
+
+
+#####
+
+ellipse_result_H3p3clus3BRBclus3_All <- bind_rows(ellipse_result_H3p3clus3BRBclus3,ellipse_result_H3p3clus3All) %>% mutate(target=factor(target, c("H3p3clus3All", "H3p3clus3BRBclus3")))
+
+```
+
+
+
+
+```{r ellipse_result plot 1, fig.width=6, fig.high=20}
+
+ellipse_result_H3p3clus3BRBclus3_All %>% filter(P=="0.5") %>% filter(seq1!="ATAC") %>% ggplot(aes(y=Y, x=X, color=target, fill="transparent")) + geom_point(size=0.001) + xlim(-1.0, 1.0) + ylim(-2.0, 2.0) + facet_wrap(~time*Compare, nrow=4) +theme_bw() + theme(axis.title = element_text(size=10),axis.text = element_text(size=7),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=6),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + coord_fixed(ratio=1)
+
+ellipse_result_H3p3clus3BRBclus3_All %>% filter(target=="H3p3clus3BRBclus3") %>% filter(seq1!="ATAC") %>% ggplot(aes(y=Y, x=X, color=P, fill="transparent")) + geom_point(size=0.001) + xlim(-1.0, 1.0) + ylim(-2.0, 2.0) + facet_wrap(~time*Compare, nrow=4) +theme_bw() + theme(axis.title = element_text(size=10),axis.text = element_text(size=7),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=6),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + coord_fixed(ratio=1)
+
+```
+
+```{r ellipse_result plot 2, fig.width=3, fig.high=10}
+
+ellipse_result_H3p3clus3BRBclus3_All %>% filter(P=="0.5") %>% filter(seq1=="ATAC") %>% ggplot(aes(y=Y, x=X, color=target, fill="transparent")) + geom_point(size=0.001)+ xlim(-1.0, 1.0)  + ylim(-2.0, 2.0) + facet_wrap(~time*Compare, nrow=4) +theme_bw() + theme(axis.title = element_text(size=10),axis.text = element_text(size=7),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=6),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + coord_fixed(ratio=1)
+
+ellipse_result_H3p3clus3BRBclus3_All %>% filter(target=="H3p3clus3BRBclus3") %>% filter(seq1=="ATAC") %>% ggplot(aes(y=Y, x=X, color=P, fill="transparent")) + geom_point(size=0.001) + xlim(-1.0, 1.0) + ylim(-2.0, 2.0) + facet_wrap(~time*Compare, nrow=4) +theme_bw() + theme(axis.title = element_text(size=10),axis.text = element_text(size=7),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=6),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + coord_fixed(ratio=1)
+
+```
+
+
+
+#breaksList = seq(0, 3.5, by = 0.05)
+#Color__a0 <- rev(brewer.pal(n = 9, name = "GnBu"))
+#Color__a <- colorRampPalette(Color__a0)(length(breaksList))
+#scale_fill_manual(breaks = breaksList, values=Color__a)
+
+
+
+```{r plot log2FC H3p3clus3 cut off ec part1, fig.width=10,fig.height=5}
+
+fig_width <- 15
+fig_height <- 5
+#fig_width <- 10
+#fig_height <- 5
+
+ellipse_p <- 0.95
+#breaksList = seq(0, 3.5, by = 0.05)
+Color__a <- c("#ffffff",brewer.pal(n = 7, name = "GnBu"))
+Color__b <- c("#ffffff",brewer.pal(n = 9, name = "Greens"))
+Color__c <- c("#ffffff",brewer.pal(n = 9, name = "Greys"))
+
+#circlecolor1 <- Color__b[7] #青系
+circlecolor1 <- Color__a[7] #青系
+circlecolor2 <- Color__c[7] #グレー系
+
+#Color__a <- colorRampPalette(Color__a0)(50)
+#scale_fill_manual(breaks = breaksList, values=Color__a)
+
+
+#density_color_low <- "#ECE038"
+#density_color_low <- "#FFFFFF"
+#density_color_high <- "#377EB8"
+#density_color_high <- "blue"
+#density_color_low <- #FFFFFF"
+#density_color_mid <- "yellow"
+#density_color_high <- "red"
+
+binsize <- 7
+
+
+#pppplottitle <- paste("log2 FC (Dox + vs -)\nBRB normalized count (Time, avg) > ",Set_cutoff,"\n H3.3 clus3: ",nrow(z_H3p3clus3)," genes\n Plot: ",H3p3clus3cutoff," genes\n BRB clus3:  ",H3p3clus3cutoff_brbclus3," genes",sep="")
+pppplottitle <- paste("H3.3 cluster3 (Clus3 All vs BRBDEG cluster3)\nlog2 FC (Dox + vs -)\nBRB normalized count (Time, avg) > 10"," Probability: ",ellipse_p,sep="")
+
+
+###
+fcplot <-plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3p3))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3p3),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + xlab("H3.3") + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_nolabel_H3p3clus3_cutoff__H3p3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_H3p3clus3_cutoff__H3p3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3p3_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3p3_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3p3_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_withcorr_H3p3clus3_cutoff__H3p3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3K4me3))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3K4me3),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_nolabel_H3p3clus3_cutoff__H3K4me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_H3p3clus3_cutoff__H3K4me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3K4me3_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3K4me3_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3K4me3_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_withcorr_H3p3clus3_cutoff__H3K4me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3K27ac))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3K27ac),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_nolabel_H3p3clus3_cutoff__H3K27acvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_H3p3clus3_cutoff__H3K27acvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3K27ac_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3K27ac_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3K27ac_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_withcorr_H3p3clus3_cutoff__H3K27acvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3K27me3))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3K27me3),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_nolabel_H3p3clus3_cutoff__H3K27me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_H3p3clus3_cutoff__H3K27me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3K27me3_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3K27me3_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3K27me3_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_withcorr_H3p3clus3_cutoff__H3K27me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3 %>% ggplot(aes(y=BRB, x=ATAC))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=ATAC),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_nolabel_H3p3clus3_cutoff__ATACvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_H3p3clus3_cutoff__ATACvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="ATAC_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="ATAC_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="ATAC_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1/log2FC_ellipse1_withcorr_H3p3clus3_cutoff__ATACvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+```
+
+-------
+
+```{r plot log2FC H3p3clus3 cut off ec part1 check, fig.width=10,fig.height=5}
+
+fig_width <- 15
+fig_height <- 5
+
+
+ellipse_p <- 0.95
+#breaksList = seq(0, 3.5, by = 0.05)
+Color__a <- c("#ffffff",brewer.pal(n = 7, name = "GnBu"))
+Color__b <- c("#ffffff",brewer.pal(n = 9, name = "Greens"))
+Color__c <- c("#ffffff",brewer.pal(n = 9, name = "Greys"))
+
+#circlecolor1 <- Color__b[7] #青系
+circlecolor1 <- Color__a[7] #青系
+circlecolor2 <- Color__c[7] #グレー系
+
+#Color__a <- colorRampPalette(Color__a0)(50)
+#scale_fill_manual(breaks = breaksList, values=Color__a)
+
+
+#density_color_low <- "#ECE038"
+#density_color_low <- "#FFFFFF"
+#density_color_high <- "#377EB8"
+#density_color_high <- "blue"
+#density_color_low <- #FFFFFF"
+#density_color_mid <- "yellow"
+#density_color_high <- "red"
+
+binsize <- 7
+
+
+pppplottitle <- paste("H3.3 cluster3 (Clus3 All vs BRBDEG cluster3)\nlog2 FC (Dox + vs -)\nBRB normalized count (Time, avg) > 10"," Probability: ",ellipse_p,sep="")
+
+plot_all_FC_cutoff_H3p3clus3 %>% filter(shape=="TRUE")
+
+###
+fcplot <-plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3p3))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3p3, shape=shape),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + xlab("H3.3") + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1) + scale_shape_manual(values=c(21, 19))
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_nolabel_H3p3clus3_cutoff__H3p3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_H3p3clus3_cutoff__H3p3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3p3_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3p3_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3p3_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_withcorr_H3p3clus3_cutoff__H3p3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3K4me3))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3K4me3, shape=shape),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1) + scale_shape_manual(values=c(21, 19))
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_nolabel_H3p3clus3_cutoff__H3K4me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_H3p3clus3_cutoff__H3K4me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3K4me3_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3K4me3_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3K4me3_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_withcorr_H3p3clus3_cutoff__H3K4me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3K27ac))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3K27ac, shape=shape),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1) + scale_shape_manual(values=c(21, 19))
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_nolabel_H3p3clus3_cutoff__H3K27acvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_H3p3clus3_cutoff__H3K27acvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3K27ac_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3K27ac_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3K27ac_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_withcorr_H3p3clus3_cutoff__H3K27acvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3  %>% ggplot(aes(y=BRB, x=H3K27me3))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=H3K27me3, shape=shape),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1) + scale_shape_manual(values=c(21, 19))
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_nolabel_H3p3clus3_cutoff__H3K27me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_H3p3clus3_cutoff__H3K27me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="H3K27me3_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="H3K27me3_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="H3K27me3_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_withcorr_H3p3clus3_cutoff__H3K27me3vsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+
+###
+fcplot <- plot_all_FC_cutoff_H3p3clus3 %>% ggplot(aes(y=BRB, x=ATAC))  + facet_wrap(~time,nrow=1)  + stat_density2d(aes(fill=..density..), geom = "raster",contour = FALSE) +scale_fill_gradientn(colours = Color__a)  + geom_abline(intercept=0,slope=0,colour="#000000",size=0.15) + geom_vline(xintercept = 0,colour="#000000",size=0.15) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor1,size=0.2) + stat_ellipse(level = ellipse_p, type = "norm",color=circlecolor2,data=f_gene_BRBclus3,size=0.2) + geom_point(aes(y=BRB, x=ATAC, shape=shape),alpha = 0.6, size=1.0, data=f_gene_BRBclus3)  + scale_color_manual(values = c("#000000"))+theme_bw() + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=8),panel.grid=element_blank()) + ggtitle(pppplottitle)+ xlim(-1.5, 1.5) + ylim(-2.0, 2.0) + coord_fixed(ratio=1) + scale_shape_manual(values=c(21, 19))
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_nolabel_H3p3clus3_cutoff__ATACvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  + geom_text_repel(aes(label = label_text), segment.color = "#000000",segment.size = 0.1)
+
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_H3p3clus3_cutoff__ATACvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+
+fcplot <- fcplot  +  geom_text_repel(data=filter(Cortest_H3p3clus3BRBclus3,Compare=="ATAC_BRB"),aes(x=-1.0,y=1.8,label=text), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(Cortest_H3p3clus3All,Compare=="ATAC_BRB"),aes(x=-1.0,y=2.0,label=text), color = circlecolor1, segment.color = circlecolor1,segment.size = 0.1,size = 1.8)  +  geom_text_repel(data=filter(summa__vsBRB_H3p3clus3_ALL_BRBclus3,Compare=="ATAC_BRB"),aes(x=-1.0,y=1.6,label=show), color = "#000000", segment.color = "#000000",segment.size = 0.1,size = 1.8)
+
+ggsave(plot=fcplot,file="./log2FC/ellipse1_forcheck/log2FC_ellipse1_forcheck_withcorr_H3p3clus3_cutoff__ATACvsBRB.pdf", width = fig_width, height = fig_height,  dpi = 360, limitsize = FALSE)
+
+fcplot
+```
+### ATAC DEG
+
+
+```{r ATAC log2FC}
+
+re_all_atac_file <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_ATAC.csv"
+
+re_all <- readr::read_csv(re_all_atac_file)
+
+
+fdr <- 0.1
+
+```
+
+
+
+
+
+#### Extract results
+191205修正
+
+```{r extractRes}
+#res <- mapply(function(x)
+#  DESeq2::results(dds,x,lfcThreshold=lfcthreth,alpha=fdr)
+#,contrast)
+print(fdr)
+
+# 200811修正
+#re_all <- map(res,as_tibble,rownames="ens_gene") %>%
+#  tibble(aspect=factor(names(.),names(.)),data=.) %>%
+#  mutate(data=map(data,annotate)) %>%
+#  unnest(cols = "data")
+
+re <- re_all %>% filter(padj<fdr) #191120修正 unnest() 
+
+re
+
+#re <- map(res,as_tibble,rownames="ens_gene") %>%
+#  tibble(aspect=factor(names(.),names(.)),data=.) %>%
+#  mutate(data=map(data,annotate)) %>%
+#  unnest(cols = "data") %>% filter(padj<fdr) #191120修正 unnest() 
+
+fc <- re %>% dplyr::select(1:7) %>% spread(aspect,log2FoldChange,fill=0)
+
+
+if(exists("fc"))   readr::write_csv(fc,"./ATAC_2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_ATAC_l2fc_fdr0p1.csv")
+if(exists("re"))   readr::write_csv(re,"./ATAC_2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_ATAC_results_fdr0p1.csv")
+
+
+```
+
+### GSEA
+
+```{r GSEA, warning=FALSE}
+msig <- msigdbr::msigdbr(species)
+fgsea_msig <- partial(fgsea::fgsea,with(msig,split(gene_symbol,gs_name)))
+gscat <- msig %>% select(gs_name,gs_cat,gs_subcat) %>%
+  distinct() %>% rename(pathway=gs_name)
+
+#gsea <- re %>% filter(aspect!="Intercept") %>% group_by(aspect) %>%
+#  summarise(l2fc=list(setNames(log2FoldChange,ext_gene))) %>%
+#  mutate(gse=map(l2fc,fgsea_msig,nperm=10000,maxSize=500)) %>%
+#  select(-l2fc) %>% unnest %>% arrange(-NES) %>% right_join(gscat,.) %>%
+#  mutate(leadingEdge=map_chr(leadingEdge,paste,collapse=","))
+
+# gsea 修正ver [20190621]
+#gsea <- re %>% filter(aspect!="Intercept") %>% group_by(aspect) %>%
+#  summarise(l2fc=list(setNames(log2FoldChange,ext_gene))) %>%
+#  mutate(gse=map(l2fc,fgsea_msig,nperm=10000,maxSize=500)) %>%
+#  select(-l2fc) %>% unnest %>% arrange(-NES) %>% right_join(gscat,.) %>%
+#  mutate(leadingEdge=map_chr(leadingEdge,paste,collapse=",")) %>%
+#  group_by(aspect,gs_cat,gs_subcat) %>%
+#  mutate(padj=p.adjust(pval,"BH")) %>% ungroup()
+
+# gsea 修正ver [20190627]
+gsea <- re %>% filter(aspect!="Intercept") %>% group_by(aspect) %>%
+  summarise(l2fc=list(setNames(log2FoldChange,ext_gene))) %>%
+  filter(map(l2fc,length)>10) %>%
+  mutate(gse=map(l2fc,fgsea_msig,nperm=10000,maxSize=500)) %>%
+  select(-l2fc) %>% unnest %>% arrange(-NES) %>% right_join(gscat,.) %>%
+  mutate(leadingEdge=map_chr(leadingEdge,paste,collapse=",")) %>%
+  group_by(aspect,gs_cat,gs_subcat) %>%
+  mutate(padj=p.adjust(pval,"BH")) %>% ungroup()
+
+```
+
+```{r Hallmark, fig.width=8, fig.height=6}
+hallmark <- gsea %>% filter(gs_cat=="H") %>%
+  mutate(pathway=sub("^HALLMARK_","",pathway)) %>% 
+  group_by(aspect) %>% nest %>%
+  mutate(plt=map2(data,aspect,~
+    ggplot(.x,aes(reorder(pathway,NES),NES,fill=padj<0.1)) +
+    ggtitle(.y) + xlab("Hallmark gene sets") +
+    geom_bar(stat="identity") + theme_minimal() + coord_flip() +
+    theme(legend.position = "none") + ggsci::scale_fill_aaas())
+  )
+print(hallmark$plt)
+```
+
+See MSigDB Collections: <http://software.broadinstitute.org/gsea/msigdb/collections.jsp>
+
+### Write-out tables
+
+```{r writeout}
+
+#csvfilepath <- "BRB0432lane2noumi_H3mm18_Dox"
+
+if(exists("fc"))   readr::write_csv(fc,"./2gun/BRB0432lane2noumi_H3mm18_Dox_l2fc_fdr0p1__final191205_last200811.csv")
+if(exists("re"))   readr::write_csv(re,"./2gun/BRB0432lane2noumi_H3mm18_Dox_results_fdr0p1__final191205_last200811.csv")
+if(exists("re_all"))   readr::write_csv(re_all,"./2gun/BRB0432lane2noumi_H3mm18_Dox_resultsall_fdr0p1__final191205_last200811.csv")
+if(exists("gsea")) readr::write_csv(gsea,"./2gun/BRB0432lane2noumi_H3mm18_Dox_gsea_fdr0p1__final191205_last200811.csv")
+```
+
+

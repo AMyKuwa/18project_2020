@@ -1,0 +1,310 @@
+---
+title: "[Last 2000909, Final 191205-1212, 18project, 3T3] MakeCountmatrix_forGEO_201012 TSSpm5kb__3T3_EGFP18_Dox_20200811__mainH3p3_ChIL01100111_ATAC0049"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+rename <- dplyr::rename #191203
+count <- dplyr::count #191203
+
+
+
+```
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/deftable_BRB_noumi_new_190520_Last20200811ver.txt"
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+
+#deftable <- "deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <- quo(type != "C2C12")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+#myaes <- aes(colour=type, shape=revcro, label=read, size=count)
+#myaes <- aes(colour=type, shape=revcro, label=read)
+
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,size=count,label=replicate)
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day,size=count,label=f_m)
+
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり
+myaes2 <- aes(colour=time,shape=type) #kuwa add
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+
+
+model <- ~group
+#model <- ~type+growth+growth:type
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+
+# controls should be placed in the right
+contrast <- list(
+  
+  group_UI_Doxplus_vs_minus = c("group", "BRB_UI_DoxPlus", "BRB_UI_DoxMinus"),
+  group_0h_Doxplus_vs_minus = c("group", "BRB_0h_DoxPlus", "BRB_0h_DoxMinus"),
+  group_24h_Doxplus_vs_minus = c("group", "BRB_24h_DoxPlus", "BRB_24h_DoxMinus"),
+  group_48h_Doxplus_vs_minus = c("group", "BRB_48h_DoxPlus", "BRB_48h_DoxMinus")
+  
+  
+  #group_UI_Doxplus_vs_minus = c("group", "Doxplus_UI", "Doxminus_UI"),
+  #group_Diff0h_Doxplus_vs_minus = c("group", "Doxplus_Diff0h", "Doxminus_Diff0h"),
+  #group_Diff24h_Doxplus_vs_minus = c("group", "Doxplus_Diff24h", "Doxminus_Diff24h"),
+  #group_Diff48h_Doxplus_vs_minus = c("group", "Doxplus_Diff48h", "Doxminus_Diff48h")
+  
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/ensemble_list_useast.csv")
+
+annotate <- partial(right_join,e2g,by="ens_gene")
+
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+nrow(e2g)
+#readr::write_csv(e2g,"ensemble_list_asia.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest.csv")
+#readr::write_csv(e2g,"ensemble_list_useast.csv")
+```
+
+### Load counts
+
+```{r load ATAC ChIL count}
+
+filepath_summary <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/ChIL01100111_ATAC0049L1__3T3_EGFP18_Dox__TSS_pm5kb_20200624.count.txt"
+
+filepath_selectedTSScount <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/ChIL01100111_ATAC0049L1__3T3_EGFP18_Dox__TSS_pm5kb_20200624.count__count_firstTSS_select.csv"
+
+
+colnames_title <- c("ens_gene","chr","TSSstart","TSSend","strand","TSS","Start","End")
+  
+samples_ATAC <- c(
+  "ATAC_UI_DoxMinus_1","ATAC_UI_DoxMinus_2","ATAC_UI_DoxMinus_3","ATAC_UI_DoxMinus_4",
+  "ATAC_UI_DoxPlus_1","ATAC_UI_DoxPlus_2","ATAC_UI_DoxPlus_3","ATAC_UI_DoxPlus_4",
+  "ATAC_48h_DoxMinus_1","ATAC_48h_DoxMinus_2","ATAC_48h_DoxMinus_3","ATAC_48h_DoxMinus_4",
+  "ATAC_48h_DoxPlus_1","ATAC_48h_DoxPlus_2","ATAC_48h_DoxPlus_3","ATAC_48h_DoxPlus_4")
+
+samples_H3p3 <- c(
+  "H3p3_UI_DoxMinus_1","H3p3_UI_DoxMinus_2","H3p3_UI_DoxPlus_1","H3p3_UI_DoxPlus_2",
+  "H3p3_0h_DoxMinus_1","H3p3_0h_DoxMinus_2","H3p3_0h_DoxPlus_1","H3p3_0h_DoxPlus_2",
+  "H3p3_24h_DoxMinus_1","H3p3_24h_DoxMinus_2","H3p3_24h_DoxPlus_1","H3p3_24h_DoxPlus_2",
+  "H3p3_48h_DoxMinus_1","H3p3_48h_DoxMinus_2","H3p3_48h_DoxPlus_1","H3p3_48h_DoxPlus_2")
+
+samples_H3K27ac <- c(
+  "H3K27ac_UI_DoxMinus_1","H3K27ac_UI_DoxMinus_2","H3K27ac_UI_DoxPlus_1","H3K27ac_UI_DoxPlus_2",
+  "H3K27ac_0h_DoxMinus_1","H3K27ac_0h_DoxMinus_2","H3K27ac_0h_DoxPlus_1","H3K27ac_0h_DoxPlus_2",
+  "H3K27ac_24h_DoxMinus_1","H3K27ac_24h_DoxMinus_2","H3K27ac_24h_DoxPlus_1","H3K27ac_24h_DoxPlus_2",
+  "H3K27ac_48h_DoxMinus_1","H3K27ac_48h_DoxMinus_2","H3K27ac_48h_DoxPlus_1","H3K27ac_48h_DoxPlus_2")
+
+samples_H3K4me3 <- c(
+  "H3K4me3_UI_DoxMinus_1","H3K4me3_UI_DoxMinus_2","H3K4me3_UI_DoxPlus_1","H3K4me3_UI_DoxPlus_2",
+  "H3K4me3_0h_DoxMinus_1","H3K4me3_0h_DoxMinus_2","H3K4me3_0h_DoxPlus_1","H3K4me3_0h_DoxPlus_2",
+  "H3K4me3_24h_DoxMinus_1","H3K4me3_24h_DoxMinus_2","H3K4me3_24h_DoxPlus_1","H3K4me3_24h_DoxPlus_2",
+  "H3K4me3_48h_DoxMinus_1","H3K4me3_48h_DoxMinus_2","H3K4me3_48h_DoxPlus_1","H3K4me3_48h_DoxPlus_2")
+
+
+selectedTSScount <- readr::read_csv(filepath_selectedTSScount) %>% mutate_if(is.double, as.integer)
+selectedTSScount1 <- selectedTSScount %>% dplyr::select(all_of(colnames_title), all_of(samples_H3p3), all_of(samples_H3K4me3),all_of(samples_H3K27ac), all_of(samples_ATAC)) %>% dplyr::rename(TSSminus5kb=TSSstart,TSSplus5kb=TSSend)
+
+nrow(selectedTSScount)
+colnames(selectedTSScount)
+
+####
+nrow(selectedTSScount1)
+colnames(selectedTSScount1)
+print(selectedTSScount1)
+#### save
+TSScount_writefile1 <- basename(filepath_selectedTSScount) %>% gsub("ChIL01100111","ChILseq",.) %>% gsub("ATAC0049L1","ATACseq",.) %>% gsub(".count__count_firstTSS_select","__CountMatrix",.) %>% gsub(".count__count_firstTSS_select","___CountMatrix",.)
+print(TSScount_writefile1)
+selectedTSScount1 %>% readr::write_csv(TSScount_writefile1) ##これを登録
+##
+
+```
+
+
+```{r load log2FC}
+
+#それぞれのlog2FC (読み込みが大変なため、そのまま登録)
+filepath_log2FC_H3p3 <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_H3p3.csv"
+
+filepath_log2FC_H3K4me3 <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_H3K4me3.csv"
+
+filepath_log2FC_H3K27ac <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_H3K27ac.csv"
+
+filepath_log2FC_ATAC <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/2gun/TSS_pm5kb_20200624_resultsall_fdr0p1_ATAC.csv"
+
+####
+
+log2FC_H3p3 <- readr::read_csv(filepath_log2FC_H3p3)
+colnames(log2FC_H3p3)
+log2FC_H3p3 %>% group_by(aspect) %>%  summarise(n())
+####
+log2FC_H3K4me3 <- readr::read_csv(filepath_log2FC_H3K4me3)
+colnames(log2FC_H3K4me3)
+log2FC_H3K4me3 %>% group_by(aspect) %>%  summarise(n())
+####
+log2FC_H3K27ac <- readr::read_csv(filepath_log2FC_H3K27ac)
+colnames(log2FC_H3K27ac)
+log2FC_H3K27ac %>% group_by(aspect) %>%  summarise(n())
+####
+log2FC_ATAC <- readr::read_csv(filepath_log2FC_ATAC)
+colnames(log2FC_ATAC)
+log2FC_ATAC %>% group_by(aspect) %>%  summarise(n())
+####
+```
+
+
+```{r load log2FC correlation table}
+
+log2FC_correlationlist <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/log2FC/tables/Spread_log2FC_ChILATACBRB_cutoff10__withCluster__H3p3clus3.csv")
+
+log2FC_corrtable <- log2FC_correlationlist %>% dplyr::select(-H3K27me3) %>% dplyr::rename(H3p3_log2FC_Doxplus_vs_minus=H3p3,  H3K4me3_log2FC_Doxplus_vs_minus=H3K4me3, H3K27ac_log2FC_Doxplus_vs_minus=H3K27ac, ATAC_log2FC_Doxplus_vs_minus=ATAC, BRB_log2FC_Doxplus_vs_minus=BRB) %>% dplyr::rename(BRB_normalizedcount_groupMean=BRBgroupMean)
+
+nrow(log2FC_correlationlist)
+colnames(log2FC_correlationlist)
+nrow(log2FC_corrtable)
+colnames(log2FC_corrtable)
+
+
+log2FC_corrtable %>% group_by(time) %>% summarise(count=n())
+log2FC_corrtable %>% filter(!is.na(BRB_normalizedcount_groupMean)) %>% group_by(time) %>% summarise(count=n())
+###
+log2FC_corrtable %>% group_by(time) %>% filter(BRBDEGcluster=="3") %>% summarise(count=n())
+log2FC_corrtable %>% filter(!is.na(BRB_normalizedcount_groupMean)) %>% group_by(time) %>% filter(BRBDEGcluster=="3") %>% summarise(count=n())
+###
+log2FC_corrtable %>% group_by(time) %>% filter(BRBDEGcluster=="3") %>% filter(ext_gene=="Acta1")
+
+```
+```{r load z}
+
+"/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/TSS_pm5kb_20200624__zscore_All.csv"
+
+```
+
+
+```{r load Norm count}
+
+#それぞれのNormCount (読み込みが大変なため、そのまま登録)
+filepath_Normcount_H3p3 <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/TSS_pm5kb_20200624__normcount_H3p3_genename.csv"
+filepath_Normcount_H3K4me3 <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/TSS_pm5kb_20200624__normcount_H3K4me3_genename.csv"
+filepath_Normcount_H3K27ac <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/TSS_pm5kb_20200624__normcount_H3K27ac_genename.csv"
+filepath_Normcount_ATAC <- "/home/guestA/o70578a/akuwakado/kuwakado/ChILSeq2/Komatsu_3T3_EGFP_H3mm18_Dox_chIl_0111NOVAseq/TSS_count/ChILAll_TSS_pm5kb_withATAC/R_server_Last_20200811_BRB_ATAC_ChIL_fistExon_mainH3p3/TSS_pm5kb_20200624__normcount_ATAC_genename.csv"
+
+readr::read_csv(filepath_Normcount_H3p3)
+readr::read_csv(filepath_Normcount_H3K4me3)
+readr::read_csv(filepath_Normcount_H3K27ac)
+readr::read_csv(filepath_Normcount_ATAC)
+
+```

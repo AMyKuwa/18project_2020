@@ -1,0 +1,279 @@
+---
+title: "[Last 200915, 18project, C2C12] CELseq_QC_Iwasaki_0386_C2C12_H3mm18_noumi_20190613_0722_fin191203_200523ver_last200915 (200915, 200523,191203-191204,190722,190613, 190514-610) [noumi (use .counts.txt)] ver.nb"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+rename <- dplyr::rename #191203
+count <- dplyr::count #191203
+
+
+
+```
+
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200523/iwasaki_0386_noumi_def_fin191203__200523ver.txt" #最終版 121203
+
+
+#deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/iwasaki_0386_umi_def_fin191203ver.txt" #最終版 121203
+#deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/iwasaki_0386_umi_def.txt"
+
+#deftable <- "deftable_BRB_umi_new.txt"
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <-  quo(group %in% c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))
+#use <- quo(type == "C2C12")
+#use <- quo(type != "C2C12")
+#use <- quo(TRUE)
+
+#use <- quo(type == "Whole_cell")
+#use <- quo(type == "Nucleus")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+
+#myaes <- aes(colour=type,shape=trypsin,label=factor(lot)) 
+#myaes <- aes(colour=trypsin,label=factor(lot)) 
+myaes <- aes(colour=time,shape=type,label=factor(lot)) 
+
+# color palette of points: See vignette("ggsci")
+#mycolor <- ggsci::scale_color_aaas()
+mycolor <- ggsci::scale_color_d3("category20") # color palette of points
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 2  #6 # number of neighboring data points in UMAP
+
+#hashigushi
+scalerows <- FALSE # gene-wise scaling (pattern is the matter?)
+#seed <- 123 # set another number if tSNE looks not good
+#perprexity <- 3 # expected cluster size in tSNE
+
+# DESeq2
+#model <- ~type+trypsin
+
+#model <- ~trypsin
+model <- ~group
+
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+# controls should be placed in the right
+contrast <- list( 
+  
+  #time_D72_vs_G = c("time", "D72", "G")
+  
+
+
+  #group_G_H3f3b_vs_WT = c("group", "H3f3b_G", "WT_G"),
+  #group_G_mm18B_vs_WT = c("group", "mm18B_G", "WT_G"),
+  #group_G_eGFP_vs_WT = c("group", "eGFP_G", "WT_G"),
+  #group_G_H3f3b_vs_eGFP = c("group", "H3f3b_G", "eGFP_G"),
+  group_G_mm18B_vs_eGFP = c("group", "mm18B_G", "eGFP_G"),
+  #group_G_mm18B_vs_H3f3b = c("group", "mm18B_G", "H3f3b_G"),
+  
+  #group_D72_H3f3b_vs_WT = c("group", "H3f3b_D72", "WT_D72"),
+  #group_D72_mm18B_vs_WT = c("group", "mm18B_D72", "WT_D72"),
+  #group_D72_eGFP_vs_WT = c("group", "eGFP_D72", "WT_D72"),
+  #group_D72_H3f3b_vs_eGFP = c("group", "H3f3b_D72", "eGFP_D72"),
+  group_D72_mm18B_vs_eGFP = c("group", "mm18B_D72", "eGFP_D72"),
+  #group_D72_mm18B_vs_H3f3b = c("group", "mm18B_D72", "H3f3b_D72")
+  
+    #group_WT_D72_vs_G = c("group", "WT_D72", "WT_G"),
+  group_eGFP_D72_vs_G = c("group", "eGFP_D72", "eGFP_G"),  
+  #group_H3f3b_D72_vs_G = c("group", "H3f3b_D72", "H3f3b_G"),
+  group_mm18B_D72_vs_G = c("group", "mm18B_D72", "mm18B_G")
+  
+
+  
+  #type = c("type", "Nucleus", "Whole_cell"),
+  #trypsin = c("trypsin", "plus", "untreated")
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+#nrow(e2g)
+#readr::write_csv(e2g,"ensemble_list_asia__fin200915.csv")
+##readr::write_csv(e2g,"ensemble_list_uswest_fin200523.csv.csv")
+###readr::write_csv(e2g,"ensemble_list_useast.csv")
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/ensemble_list_asia__fin200915.csv")
+annotate <- partial(right_join,e2g,by="ens_gene")
+nrow(e2g)
+
+```
+
+```{r 2gun loaddata}
+
+re <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_results__final200915.csv")
+
+```
+
+### normalized count plot
+
+```{r normCount Matome loaddata}
+# 2019 12月作成
+
+norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/Norm_deftable_all_final200915__genename.csv") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))) #191206 追加
+
+nrow(norm_plotlist_all_name)
+
+```
+
+
+norm_plotlist_all "Norm_deftable_all_final200915.csv" を使う
+
+```{r normcount, fig.width=12,fig.height=9}
+
+plotgene_list <- c("Col3a1","Acta2","Tnnt2","Tnni2","Acta1","Myh3","Myog","Csrp3","Myorg","Des","Myod1","Gata4","Actb","Gapdh","Rpl27")
+length(plotgene_list)
+
+#plotgene_list <- c("Col3a1","Acta1","Myog","Myod1","Tnnt1","Tnnt2","Tnnt3","Csrp3","Myh3","Ckm","Rpl27","Actb","Gapdh","Slc38a2","Inhba","Myh9","Rpl13","Nsdhl")
+#length(plotgene_list)
+#"Myh3","Ckm","Acta1","Tnnt2","Actb","Csrp3"
+
+re %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% filter(ext_gene %in% plotgene_list) %>% arrange(log2FoldChange)  
+re %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% filter(ext_gene %in% plotgene_list) %>% mutate(ext_gene=factor(ext_gene,plotgene_list)) %>% arrange(ext_gene)
+
+#======== Change every data ここで順番を変更 ========#
+
+#-------#
+
+nbl <- norm_plotlist_all_name %>% filter(ext_gene %in% plotgene_list) %>% mutate(ext_gene=factor(ext_gene,plotgene_list))
+
+#====================================================#
+
+f_gene_norm <- function(x) x %>% group_by(group, type, time, ext_gene) %>% summarise(avg=mean(normalized),se=sd(normalized)/sqrt(length(normalized))) %>% ungroup()
+
+#----#
+nbl %>% group_by(group, type, time) %>% summarise()
+#----#
+
+#face="italic"
+#, axis.text.x = element_text(angle = 45, hjust = 1) #X軸のラベルを傾ける場合
+#, axis.text.x = element_text(hjust = 0.5) #X軸のラベルを水平にする場合
+
+### point ###
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=3)+geom_line(size=1.0, aes(x=time,y=avg,colour=type),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()  + ylab("normalized count")
+
+file_path <- "./normCount/normCount_plot_final200915_plot2_heatmapselect200930ver.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 12, height = 8)
+
+print(gggggpp)
+
+
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=3)+geom_smooth(se=FALSE)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()  + ylab("normalized count")
+
+file_path <- "./normCount/normCount_plot_final200915_plot2_heatmapselect200930ver_smooth.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 12, height = 8)
+
+
+```
+
+```{r ggplot norm nogrid, fig.width=20,fig.height=3}
+
+### point ###
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=1)+geom_line(size=1.0, aes(x=time,y=avg,colour=type),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16), panel.grid = element_blank())+ggsci::scale_color_npg()  + ylab("normalized count") 
+file_path <- "./normCount/normCount_plot_final200915_plot2_heatmapselect200930ver_nogrid.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 25, height = 3,limitsize = FALSE)
+
+print(gggggpp)
+
+
+```
+
+```{r reall select}
+aaaaaaaaa <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_resultsall__final200915.csv") %>% filter(ext_gene %in% plotgene_list) %>% mutate(ext_gene=factor(ext_gene,plotgene_list)) %>% arrange(ext_gene)
+
+aaaaaaaaa
+
+aaaaaaaaa %>% readr::write_csv("./normCount/Iwasaki_0386re_C2C12_H3mm18_noumi_resultsall__final200915__heatmapselect200930ver.csv")
+aaaaaaaaa %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% readr::write_csv("./normCount/Iwasaki_0386re_C2C12_H3mm18_noumi_resultsall__final200915__heatmapselect200930ver__2gunDEG_D72_mm18B_vs_eGFP.csv")
+```
+
+
+

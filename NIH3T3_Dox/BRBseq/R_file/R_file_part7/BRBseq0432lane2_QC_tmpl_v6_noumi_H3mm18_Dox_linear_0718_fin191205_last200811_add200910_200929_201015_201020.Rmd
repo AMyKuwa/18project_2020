@@ -1,0 +1,375 @@
+---
+title: "[Last 2000909, Final 191205-1212, 18project, 3T3] BRBseq0432lane2_QC_tmpl_v6_noumi_H3mm18_Dox_linear_0718_fin191205_last200811_add200910_200929_201015_201020 (umi補正なし,fdr0.1) (TPM,尤度比検定)"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+count <- dplyr::count
+rename <- dplyr::rename
+```
+
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/deftable_BRB_noumi_new_190520_Last20200811ver.txt"
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Rserver_191203/deftable_BRB_noumi_new_190520_fin191205ver.txt" #Umi補正なし (BRB)
+
+
+#deftable <- "deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+#deftable <- "~/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/deftable_BRB_noumi_new_190520.txt" #Umi補正なし (BRB)
+
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <- quo(type != "C2C12")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+#myaes <- aes(colour=type, shape=revcro, label=read, size=count)
+#myaes <- aes(colour=type, shape=revcro, label=read)
+
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,size=count,label=replicate)
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day,size=count,label=f_m)
+
+#myaes <- aes(colour=WT_KO_intact_CTX, shape=Day, label=f_m) #サイズを変えず
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり 
+myaes <- aes(colour=time,shape=type,label=rep) #ラベルあり 変更　10101015 myaes <- aes(colour=time,shape=type,label=rep,size=count) #ラベルあり 
+myaes2 <- aes(colour=time,shape=type) #kuwa add
+
+# color palette of points: See vignette("ggsci")
+mycolor <- ggsci::scale_color_aaas()
+
+
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 6  # number of neighboring data points in UMAP #ここをどうしたらいい？
+
+
+# DESeq2
+#model <- ~groupn+lead #dateも追加
+#model <- ~leg + enzyme + leg:enzyme
+#model <- ~type+growth#+type:growth
+#model <- ~group+lead
+
+
+#model <- ~group
+#model <- ~type+growth+type:growth #これでは相互作用が入っていない
+#model <- ~type+growth #これでは相互作用が入っていない
+
+
+model <- ~group
+#model <- ~type+growth+growth:type
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+
+# controls should be placed in the right
+contrast <- list(
+  
+  group_UI_Doxplus_vs_minus = c("group", "BRB_UI_DoxPlus", "BRB_UI_DoxMinus"),
+  group_0h_Doxplus_vs_minus = c("group", "BRB_0h_DoxPlus", "BRB_0h_DoxMinus"),
+  group_24h_Doxplus_vs_minus = c("group", "BRB_24h_DoxPlus", "BRB_24h_DoxMinus"),
+  group_48h_Doxplus_vs_minus = c("group", "BRB_48h_DoxPlus", "BRB_48h_DoxMinus")
+  
+  
+  #group_UI_Doxplus_vs_minus = c("group", "Doxplus_UI", "Doxminus_UI"),
+  #group_Diff0h_Doxplus_vs_minus = c("group", "Doxplus_Diff0h", "Doxminus_Diff0h"),
+  #group_Diff24h_Doxplus_vs_minus = c("group", "Doxplus_Diff24h", "Doxminus_Diff24h"),
+  #group_Diff48h_Doxplus_vs_minus = c("group", "Doxplus_Diff48h", "Doxminus_Diff48h")
+  
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+#if(!exists("e2g")){
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+#  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+#  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+#  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+#  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+#    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+#  rename(
+#    ens_gene = ensembl_gene_id,
+#    ext_gene = external_gene_name,
+#    biotype = gene_biotype,
+#    chr = chromosome_name
+#  )
+#}
+
+e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/ensemble_list_useast.csv")
+
+annotate <- partial(right_join,e2g,by="ens_gene")
+
+#annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+nrow(e2g)
+#readr::write_csv(e2g,"ensemble_list_asia.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest.csv")
+#readr::write_csv(e2g,"ensemble_list_useast.csv")
+```
+
+
+# MA plot
+
+### normalized count plot
+
+```{r normCount Matome loaddata}
+# 2019 12月作成
+
+#re <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_results__final200915.csv")
+
+norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/BRB0432lane2noumi_H3mm18_Dox__normCount__final191205_last200811.csv") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+
+#norm_plotlist_all_clus <- norm_plotlist_all_name %>% left_join(degcluster_csv)
+
+# %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster) %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+# %>% left_join(degcluster_csv) %>% dplyr::select(ens_gene,ext_gene,biotype,chr,cluster,all_of(BRB_z_list)) %>% arrange(cluster,ext_gene)
+                                          
+#norm_plotlist_all_name <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200915/Norm_deftable_all_final200915__genename.csv") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))) #191206 追加
+
+nrow(norm_plotlist_all_name)
+print(norm_plotlist_all_name %>% dplyr::select(ens_gene) %>% unique() %>% nrow())
+#nrow(norm_plotlist_all_clus)
+
+```
+
+
+
+こちらで横軸を計算してプロット
+
+20201015 add (20200915ver)
+
+```{r norm count def table}
+
+Set_cutoff <- 10.0
+
+## 各時刻の平均を計算し、normalized count > 10 を超えるものを抽出する。
+
+#----- 使用するデータのみ取り出す ---# 20200914
+
+norm_plotlist_all <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/BRB0432lane2noumi_H3mm18_Dox__normCount__final191205_last200811.csv") %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% mutate(type=factor(type,c("DoxPlus","DoxMinus")))
+
+#norm_plotlist_all <- normalizedcount %>% gather("sample", "normalized",-(ens_gene)) %>% inner_join(def, by = "sample") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72")))
+
+#norm_plotlist_sel <- norm_plotlist_all %>% filter(sample %in% def_select$sample) %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("eGFP","mm18B"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72")))
+
+#notm_plotlist_cutoff <- norm_plotlist_all %>% annotate() %>% group_by(ens_gene, ext_gene, Day, intact_CTX) %>% summarise(groupMean=mean(normalized))  %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+## "Dox +, Dox -"関係なく各時刻での平均を求める
+notm_plotlist_beforecutoff <- norm_plotlist_all %>% group_by(ens_gene, ext_gene, time) %>% summarise(groupMean=mean(normalized))
+#notm_plotlist_beforecutoff <- norm_plotlist_sel %>% annotate() %>% group_by(ens_gene, ext_gene, time) %>% summarise(groupMean=mean(normalized))
+
+notm_plotlist_cutoff <- notm_plotlist_beforecutoff %>% filter(groupMean > Set_cutoff) %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+nrow(notm_plotlist_beforecutoff %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()) #この値をMAplotのx軸に使用
+nrow(notm_plotlist_cutoff) #解析対象を絞る　(後の全体のクラスタリングに使用)
+
+
+```
+
+```{r norm_plotlist_all}
+
+norm_plotlist_all %>% readr::write_csv("Norm_deftable_all_3T3Dox_last200811__cal20201015.csv")
+
+notm_plotlist_beforecutoff %>% readr::write_csv("Norm_groupMean_select_3T3Dox_last200811__cal20201015.csv")
+notm_plotlist_cutoff  %>% readr::write_csv("Norm_groupMean_select_cutoff10_3T3Dox_last200811__cal20201015.csv")
+
+nrow(norm_plotlist_all)
+
+nrow(notm_plotlist_beforecutoff) #[1] 86828
+nrow(notm_plotlist_cutoff)
+
+```
+
+
+```{r maplot draw, fig.width = 7, fig.height = 8}
+
+re_all <- readr::read_csv( "/home/guestA/o70578a/akuwakado/kuwakado/BRBSeq/H3mm18_Dox_0432lane2/Final_Last_Rserver_200811/2gun/BRB0432lane2noumi_H3mm18_Dox_resultsall_fdr0p1__final191205_last200811.csv")
+
+nrow(re_all) #[1] 86828
+
+### 
+
+re_select_plot <- re_all %>% filter(aspect %in% c("group_UI_Doxplus_vs_minus","group_0h_Doxplus_vs_minus","group_24h_Doxplus_vs_minus","group_48h_Doxplus_vs_minus")) %>% mutate(time=case_when(aspect=="group_UI_Doxplus_vs_minus"~"UI",aspect=="group_0h_Doxplus_vs_minus"~"0h",aspect=="group_24h_Doxplus_vs_minus"~"24h",aspect=="group_48h_Doxplus_vs_minus"~"48h",TRUE ~ "FALSE"))  %>% mutate(time=factor(time, c("UI", "0h","24h","48h"))) %>% left_join(notm_plotlist_beforecutoff)
+
+re_select_plot %>% readr::write_csv("./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_DEG_time_MAplotdata.csv")
+
+####
+
+Daymean <- re_select_plot %>% group_by(time) %>% summarise(DayMean=mean(groupMean))
+Mean_color <- "#B8860B"
+
+Daymean
+
+Allgene_num <- re_select_plot %>% dplyr::select(ens_gene) %>% unique() %>% nrow()
+
+
+```
+
+
+
+```{r MAplot DEGs, fig.width = 5, fig.height = 4}
+
+f_DEG_in <- function(x) x %>% filter(padj<0.1)
+f_DEG_out <- function(x) x %>% filter((!(padj<0.1))|is.na(padj))
+
+
+f_inFC_degin <- function(x) x %>% f_DEG_in %>% filter(!(abs(log2FoldChange) > 5.0))
+f_inFC_degout <- function(x) x %>% f_DEG_out %>% filter(!(abs(log2FoldChange) > 5.0))
+
+f_overFC_up_degin <- function(x) x %>% f_DEG_in %>% filter(log2FoldChange > 5.0) %>% mutate(log2FoldChange=5.0) 
+f_overFC_down_degin <- function(x) x %>% f_DEG_in %>% filter(log2FoldChange < -5.0) %>% mutate(log2FoldChange=-5.0)
+f_overFC_up_degout <- function(x) x %>% f_DEG_out %>% filter(log2FoldChange > 5.0) %>% mutate(log2FoldChange=5.0)
+f_overFC_down_degout <- function(x) x %>% f_DEG_out %>% filter(log2FoldChange < -5.0) %>% mutate(log2FoldChange=-5.0)
+
+
+### 全て
+re_select_plot %>% group_by(aspect) %>% summarise(n())
+
+### DEG
+re_select_plot %>% f_DEG_in %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_inFC_degin %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_up_degin %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_down_degin %>% group_by(aspect) %>% summarise(n())
+
+### DEG 以外
+re_select_plot %>% f_DEG_out %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_inFC_degout %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_up_degout %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_down_degout %>% group_by(aspect) %>% summarise(n())
+
+ddddddddd <- re_select_plot  %>% f_DEG_in %>% mutate(FC_updown = case_when(log2FoldChange>0~"Up", log2FoldChange<0~"Down")) %>% mutate(FC_updown=factor(FC_updown,c("Up","Down"))) %>% arrange(time,FC_updown)
+eeeeeeeee <- ddddddddd  %>% group_by(aspect,time,FC_updown) %>% summarise(count=n()) %>% arrange(time)
+
+print(eeeeeeeee)
+
+gggglabel <- paste("NIH3T3 H3mm18 Doxplus_vs_minus:", Allgene_num, "genes,",
+                   eeeeeeeee$time[1],":", eeeeeeeee$FC_updown[1],eeeeeeeee$count[1],
+                   ", ",eeeeeeeee$time[2],":", eeeeeeeee$FC_updown[2],eeeeeeeee$count[2],",",eeeeeeeee$FC_updown[3],eeeeeeeee$count[3],
+                   ", ",eeeeeeeee$time[4],":", eeeeeeeee$FC_updown[4],eeeeeeeee$count[4],",",eeeeeeeee$FC_updown[5],eeeeeeeee$count[5],
+                   ", ",eeeeeeeee$time[6],":", eeeeeeeee$FC_updown[6],eeeeeeeee$count[6],",",eeeeeeeee$FC_updown[7],eeeeeeeee$count[7],sep=" ")
+
+#gggglabel <- paste("NIH3T3 H3mm18 Doxplus_vs_minus:", Allgene_num, "genes,",
+#                   "G:",eeeeeeeee$FC_updown[1],eeeeeeeee$count[1],",",eeeeeeeee$FC_updown[2],eeeeeeeee$count[2],
+#                   ",","D72:",eeeeeeeee$FC_updown[3],eeeeeeeee$count[3],",",eeeeeeeee$FC_updown[4],eeeeeeeee$count[4],sep=" ")
+print(gggglabel)
+
+######
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="red",size=0.2) +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,nrow=2) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4), panel.grid = element_blank())
+#+ scale_color_manual(values = c("#ff0000","#ff0000","#000000")) 
+
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot.pdf", plot = ggmaplot, width = 8, height = 2, dpi = 50)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_20201021.pdf", plot = ggmaplot, width = 5, height = 4, dpi = 50)
+plot(ggmaplot)
+
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="red",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,nrow=2) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4), panel.grid = element_blank())
+
+#+ scale_color_manual(values = c("#ff0000","#ff0000","#000000")) 
+
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean.pdf", plot = ggmaplot, width = 8, height = 2, dpi = 50)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean_20201021.pdf", plot = ggmaplot, width = 5, height = 4, dpi = 50)
+plot(ggmaplot)
+
+######
+## FC over5も出力
+
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="red",size=0.2)  +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,nrow=2) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4), panel.grid = element_blank())
+
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5.pdf", plot = ggmaplot, width = 8, height = 2, dpi = 50)
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5.jpeg", plot = ggmaplot, width = 8, height = 2, dpi = 1000)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5_20201021.pdf", plot = ggmaplot, width = 5, height = 4, dpi = 50)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5_20201021.jpeg", plot = ggmaplot, width = 5, height = 4, dpi = 2000)
+plot(ggmaplot)
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="red",size=0.2)  +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,nrow=2) + theme(axis.title = element_blank(),axis.text = element_blank(), axis.text.x = element_blank(), legend.position = "right", strip.text=element_blank(),strip.background = element_blank(),title = element_blank(), panel.grid = element_blank())
+
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5__nolabel.pdf", plot = ggmaplot, width = 10, height = 2, dpi = 50)
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5__nolabel.jpeg", plot = ggmaplot, width = 10, height = 2, dpi = 1000)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5__nolabel_20201021.pdf", plot = ggmaplot, width = 5, height = 4, dpi = 50)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_over5__nolabel_20201021.jpeg", plot = ggmaplot, width = 5, height = 4, dpi = 2000)
+plot(ggmaplot)
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="red",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,nrow=2) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=4), panel.grid = element_blank())
+
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean_over5.pdf", plot = ggmaplot, width = 6, height = 12, dpi = 120)
+#ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean_over5.pdf", plot = ggmaplot, width = 8, height = 2, dpi = 50)
+ggsave(file="./MAplot/NIH3T3_H3mm18__Doxplus_vs_minus_time_MAplot_Mean_over5_20201021.pdf", plot = ggmaplot, width = 5, height = 4, dpi = 50)
+plot(ggmaplot)
+
+```

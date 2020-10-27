@@ -1,0 +1,1338 @@
+---
+title: "[Last 200915, 18project, C2C12] CELseq_QC_Iwasaki_0386_C2C12_H3mm18_noumi_20190613_0722_fin191203_200523ver_last200915 (200915, 200523,191203-191204,190722,190613, 190514-610) [noumi (use .counts.txt)] ver.nb"
+output:
+  html_notebook: 
+    toc: yes
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r libraries,message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+source("/home/guestA/n70275b/work/rscripts/geomNorm.R")
+
+# Helper function
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(size=3,stroke=1) +
+#  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルあり
+ggpoints <- function(x,...) 
+  ggplot(x,...) + geom_point(stroke=1) +
+  ggrepel::geom_text_repel(size=4) + theme_minimal() + mycolor
+
+## ラベルなし
+#ggpoints <- function(x,...) 
+#  ggplot(x,...) + geom_point(stroke=1) + theme_minimal() + mycolor
+
+
+print(Sys.Date())
+print(sessionInfo(),locale=FALSE)
+
+select <- dplyr::select
+rename <- dplyr::rename #191203
+count <- dplyr::count #191203
+
+
+
+```
+
+### Parameters
+
+*modify here*
+
+```{r params}
+# Files
+
+deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200523/iwasaki_0386_noumi_def_fin191203__200523ver.txt" #最終版 121203
+
+
+#deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/iwasaki_0386_umi_def_fin191203ver.txt" #最終版 121203
+#deftable <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/iwasaki_0386_umi_def.txt"
+
+#deftable <- "deftable_BRB_umi_new.txt"
+
+## Data selection (filter rows of deftable)
+#use <- quo(!grepl("^18",group) & (group != "Nc-minusTryd"))
+#use <- quo(TRUE) # use all
+use <-  quo(group %in% c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))
+#use <- quo(type == "C2C12")
+#use <- quo(type != "C2C12")
+#use <- quo(TRUE)
+
+#use <- quo(type == "Whole_cell")
+#use <- quo(type == "Nucleus")
+
+# Species specific parameters
+species <- "Mus musculus"
+biomartann <- "mmusculus_gene_ensembl"
+maxchrom <- 19 # 19: mouse, 22: human
+
+# Graphics
+# aesthetic mapping of labels
+#myaes <- aes(colour=enzyme,shape=leg,label=rep) 
+
+#myaes <- aes(colour=growth,shape=type,size=count) #ラベルなし
+#myaes <- aes(colour=growth,shape=type,label=replicate,size=count) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=replicate) #ラベルあり
+#myaes <- aes(colour=enzyme,shape=leg,label=factor(rep))
+
+#myaes <- aes(colour=type,shape=trypsin,label=factor(lot)) 
+#myaes <- aes(colour=trypsin,label=factor(lot)) 
+myaes <- aes(colour=time,shape=type,label=factor(lot)) 
+
+# color palette of points: See vignette("ggsci")
+#mycolor <- ggsci::scale_color_aaas()
+mycolor <- ggsci::scale_color_d3("category20") # color palette of points
+
+# PCA/UMAP
+scalerows <- TRUE # gene-wise scaling (pattern is the matter?)
+ntop <- 500 # number of top-n genes with high variance
+seed <- 123 # set another number if UMAP looks not good
+n_nei <- 2  #6 # number of neighboring data points in UMAP
+
+#hashigushi
+scalerows <- FALSE # gene-wise scaling (pattern is the matter?)
+#seed <- 123 # set another number if tSNE looks not good
+#perprexity <- 3 # expected cluster size in tSNE
+
+# DESeq2
+#model <- ~type+trypsin
+
+#model <- ~trypsin
+model <- ~group
+
+
+fdr <- 0.1 # acceptable false discovery rate
+lfcthreth <- log2(1) # threshold in abs(log2FC)
+# controls should be placed in the right
+contrast <- list( 
+  
+  #time_D72_vs_G = c("time", "D72", "G")
+  
+
+
+  #group_G_H3f3b_vs_WT = c("group", "H3f3b_G", "WT_G"),
+  #group_G_mm18B_vs_WT = c("group", "mm18B_G", "WT_G"),
+  #group_G_eGFP_vs_WT = c("group", "eGFP_G", "WT_G"),
+  #group_G_H3f3b_vs_eGFP = c("group", "H3f3b_G", "eGFP_G"),
+  group_G_mm18B_vs_eGFP = c("group", "mm18B_G", "eGFP_G"),
+  #group_G_mm18B_vs_H3f3b = c("group", "mm18B_G", "H3f3b_G"),
+  
+  #group_D72_H3f3b_vs_WT = c("group", "H3f3b_D72", "WT_D72"),
+  #group_D72_mm18B_vs_WT = c("group", "mm18B_D72", "WT_D72"),
+  #group_D72_eGFP_vs_WT = c("group", "eGFP_D72", "WT_D72"),
+  #group_D72_H3f3b_vs_eGFP = c("group", "H3f3b_D72", "eGFP_D72"),
+  group_D72_mm18B_vs_eGFP = c("group", "mm18B_D72", "eGFP_D72"),
+  #group_D72_mm18B_vs_H3f3b = c("group", "mm18B_D72", "H3f3b_D72")
+  
+    #group_WT_D72_vs_G = c("group", "WT_D72", "WT_G"),
+  group_eGFP_D72_vs_G = c("group", "eGFP_D72", "eGFP_G"),  
+  #group_H3f3b_D72_vs_G = c("group", "H3f3b_D72", "H3f3b_G"),
+  group_mm18B_D72_vs_G = c("group", "mm18B_D72", "mm18B_G")
+  
+
+  
+  #type = c("type", "Nucleus", "Whole_cell"),
+  #trypsin = c("trypsin", "plus", "untreated")
+  
+  #Intercept = list("Intercept"), # reference level
+  #leg_LvsR = c("leg", "L", "R"),
+  #enz_KvsC = c("enzyme","K","C")
+  #legL.enzK = list("legL.enzymeK") # interaction
+  
+  #type_Doxplus_vs_minus = c("type", "Doxplus", "Doxminus")
+)
+```
+
+
+
+### Retrieve Biomart
+
+```{r biomart, cache=TRUE}
+if(!exists("e2g")){
+  ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="asia.ensembl.org")
+  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="uswest.ensembl.org")
+  #ensembl <- biomaRt::useMart("ENSEMBL_MART_ENSEMBL",host="useast.ensembl.org")
+  mart <- biomaRt::useDataset(biomartann,mart=ensembl)
+  e2g <- biomaRt::getBM(attributes=c("ensembl_gene_id","external_gene_name",
+    "gene_biotype","chromosome_name"), mart=mart) %>% as_tibble %>%
+  rename(
+    ens_gene = ensembl_gene_id,
+    ext_gene = external_gene_name,
+    biotype = gene_biotype,
+    chr = chromosome_name
+  )
+}
+annotate <- partial(right_join,e2g,by="ens_gene")
+
+#-----#
+nrow(e2g)
+readr::write_csv(e2g,"ensemble_list_asia__fin200915.csv")
+#readr::write_csv(e2g,"ensemble_list_uswest_fin200523.csv.csv")
+##readr::write_csv(e2g,"ensemble_list_useast.csv")
+
+#e2g <- readr::read_csv("/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200523/ensemble_list_uswest_fin200523.csv.csv")
+#annotate <- partial(right_join,e2g,by="ens_gene")
+#nrow(e2g)
+
+```
+
+### Load counts
+
+```{r loadUMI}
+
+def <- readr::read_tsv(deftable) %>% filter(!!use) %>% arrange(group,sample) #20200915 change
+print(def)
+readr::write_csv(def,"deftable_used_CEL0386noumi_C2C12_fin200915.csv")
+
+####--- New ---#### (no UMI ?)
+# Set reference levels according to the contrast
+for(x in keep(contrast,is.character))
+  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+
+umi <- def$file %>% unique %>% tibble(file=.) %>% 
+  dplyr::mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+  unnest() %>% dplyr::rename(barcode=cell) %>%
+  dplyr::inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+  select(-file,-barcode) %>% dplyr::rename(ens_gene=gene)
+
+print(umi)
+
+## sample, barcode, file を忘れずに！
+
+mat <- umi %>% annotate %>%
+  dplyr::mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+## to check read vias, this add read number as "n" column (2019/4/19)
+def <- umi %>% count(sample,wt=count) %>% dplyr::inner_join(def,.) %>% dplyr::rename(count=n)
+####-----------#### 
+
+
+#def <- readr::read_tsv(deftable) %>% filter(!!use)
+
+####--- New ---#### (no UMI ?)
+# Set reference levels according to the contrast
+#for(x in keep(contrast,is.character))
+#  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+
+#umi <- def$file %>% unique %>% tibble(file=.) %>% 
+#  dplyr::mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+#  unnest() %>% dplyr::rename(barcode=cell) %>%
+#  inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+#  select(-file,-barcode) %>% dplyr::rename(ens_gene=gene)
+
+## sample, barcode, file を忘れずに！
+
+#mat <- umi %>% annotate %>%
+#  dplyr::mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+#  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+## to check read vias, this add read number as "n" column (2019/4/19)
+#def <- umi %>% count(sample,wt=count) %>% inner_join(def,.) %>% dplyr::rename(count=n)
+####-----------#### 
+
+# Old
+# Set reference levels according to the contrast
+#for(x in keep(contrast,is.character))
+#  def[[x[1]]] <- relevel(factor(def[[x[1]]]),x[3])
+#umi <- def$file %>% unique %>% tibble(file=.) %>% 
+#  mutate(data=map(file,readr::read_tsv,progress=FALSE)) %>%
+#  unnest() %>% rename(barcode=cell) %>%
+#  inner_join(select(def,file,barcode,sample),.,c("file","barcode")) %>%
+#  select(-file,-barcode) %>% rename(ens_gene=gene)
+#mat <- umi %>% annotate %>%
+#  mutate(chr=factor(chr,c(1:maxchrom,"X","Y","MT"))) %>%
+#  filter(!is.na(chr)) %>% spread(sample,count,fill=0)
+
+
+
+print(umi)
+print(def)
+```
+
+### Reads breakdown
+
+#### Total reads
+
+```{r totalReads, fig.width=7,fig.height=5}
+
+bychr <- mat %>% select(-(1:3)) %>%
+  gather("sample","count",-chr) %>%
+  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+
+ggplot(bychr,aes(reorder(sample,dplyr::desc(sample)),total/1e6,fill=chr)) +
+  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+  scale_x_discrete(limits = rev(levels(sample)))
+
+
+# 前
+#bychr <- mat %>% select(-(1:3)) %>%
+#  gather("sample","count",-chr) %>%
+#  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+
+#ggplot(bychr,aes(reorder(sample,desc(sample)),total/1e6,fill=chr)) +
+#  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+#  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+#  scale_x_discrete(limits = rev(levels(sample)))
+
+
+#bychr <- mat %>% select(-(1:3)) %>%
+#  gather("sample","count",-chr) %>%
+#  group_by(chr,sample) %>% summarise(total=sum(count)) %>% ungroup
+#ggplot(bychr,aes(reorder(sample,dplyr::desc(sample)),total/1e6,fill=chr)) +
+#  theme_linedraw() + geom_bar(stat="identity") + coord_flip() +
+#  xlab("sample") + ylab("million reads") + ggsci::scale_fill_igv() +
+#  scale_x_discrete(limits = rev(levels(sample)))
+```
+
+#### Biotype
+
+```{r biotype,fig.width=8,fig.height=7}
+bt <- mat %>% select(-c(1,2,4)) %>% group_by(biotype) %>%
+  summarise_all(sum) %>% filter_at(-1,any_vars(. > 1000))
+bt %>% tibble::column_to_rownames("biotype") %>%
+  as.matrix %>% t %>% mosaicplot(las=2,shade=TRUE)
+```
+
+### Correlations
+
+drop rows with all 0 -> +1/2 -> geom.scale -> log -> Pearson's
+
+```{r makemat, fig.width=8,fig.height=7}
+matf <- mat %>% filter(chr!="MT") %>% filter_at(-(1:4),any_vars(. > 0))
+X <- matf %>% select(-(1:4)) %>% as.matrix
+rownames(X) <- matf$ens_gene
+lX <- log(gscale(X+0.5))
+R <- cor(lX); diag(R) <- NA
+pheatmap::pheatmap(R,color=viridis::viridis(256))
+```
+
+### Dimension reduction
+
+```{r PCA,fig.width=4,fig.height=3}
+# set scale=TRUE if the patterns (not level) is the matter
+p <- prcomp(t(lX[rank(-apply(lX,1,var)) <= ntop,]),scale=scalerows,center=TRUE)
+screeplot(p,las=2,main="Importance")
+print(summary(p)$imp[,seq(min(10,ncol(X)))])
+```
+
+```{r makescoreDF}
+label <- def %>% filter(sample %in% colnames(X))
+df <- data.frame(p$x) %>% as_tibble(rownames="sample") %>%
+  inner_join(label,.) %>% select(-file)
+
+print(df)
+```
+
+```{r proximity,fig.width=6,fig.height=4}
+ggpoints(df,modifyList(aes(PC1,PC2),myaes))
+ggpoints(df,modifyList(aes(PC2,PC3),myaes))
+
+set.seed(seed)
+um <- uwot::umap(p$x,n_nei,2)
+df <- as_tibble(um) %>% rename(UMAP1=V1,UMAP2=V2) %>% bind_cols(df)
+ggpoints(df,modifyList(aes(UMAP1,UMAP2),myaes))
+
+print(df)
+readr::write_csv(df,"CEL0386noumi_C2C12_Count_PCA_fin200915.csv")
+```
+
+### DESeq2
+
+#### Fit model
+
+```{r deseq2}
+dds <- DESeq2::DESeqDataSetFromMatrix(X[,label$sample],label,model)
+dds <- DESeq2::DESeq(dds)
+
+#=====#
+# 20191213追加
+dds <- DESeq2::estimateSizeFactors(dds)
+norm <- DESeq2::counts(dds,normalized=TRUE) #DEGを取った後のクラスタリングに使う。
+
+normalizedcount <- as.data.frame(norm) %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+readr::write_csv(normalizedcount, "./CEL0386noumi_C2C12_H3mm18_normCount_fin200915.csv")
+
+normalizedcount %>% inner_join(e2g, by = "ens_gene") %>% readr::write_csv("./CEL0386noumi_C2C12_normCount_genename_fin200915.csv")
+
+####--- + size factors を書き出し ------------------####
+as.data.frame(DESeq2::sizeFactors(dds))  %>% tibble::rownames_to_column("sample") %>% readr::write_csv("./CEL0386noumi_C2C12_H3mm18_sizefactors_fin200915_fin200915.csv")
+as.data.frame(DESeq2::sizeFactors(dds))  %>% tibble::rownames_to_column("sample") 
+
+#count_dds <- estimateSizeFactors(dds)
+#counts(count_dds, normalized=TRUE)
+```
+
+
+vst => z score (200914add)
+
+```{r zscore 200811add}
+
+## 20200914
+
+vsd <- DESeq2::vst(dds) #normalized countが入っている。(vstかrlog)
+Xd <- SummarizedExperiment::assay(vsd) # 全て選択(200326) 20190920を元に (191024)
+Xs <- Xd %>% t %>% scale %>% t
+
+vst_score <- Xd %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble #200909 add
+vst_type <- vst_score  %>% annotate %>% dplyr::select("ens_gene","ext_gene", "biotype","chr", all_of(label$sample))
+
+
+zscore <- Xs %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+zscore_type <- zscore  %>% annotate %>% dplyr::select("ens_gene","ext_gene", "biotype","chr", all_of(label$sample))
+
+readr::write_csv(vst_score, "CEL0386noumi_C2C12_H3mm18__vst_all_fin200915.csv") #200909 add
+readr::write_csv(vst_type, "CEL0386noumi_C2C12_H3mm18__vst_type_all_fin200915.csv") #200909 add
+readr::write_csv(zscore, "CEL0386noumi_C2C12_H3mm18__zscore_all_fin200915.csv")
+readr::write_csv(zscore_type, "CEL0386noumi_C2C12_H3mm18__zscore_type_all_fin200915.csv")
+
+
+colnames(zscore_type)
+ncol(vst_type)
+ncol(zscore_type)
+nrow(vst_type)
+nrow(zscore_type)
+
+```
+
+
+
+```{r save coef}
+coef_dds <- coef(dds) %>% as.data.frame() %>% tibble::rownames_to_column("ens_gene") %>% as_tibble
+
+readr::write_csv(coef_dds, "CEL0386noumi_C2C12_H3mm18__coefs_fin200915.csv")
+```
+
+
+
+#### Diagnostics plot
+
+```{r diagnostics,fig.width=7,fig.height=5}
+DESeq2::sizeFactors(dds) %>%
+  {tibble(sample=names(.),sizeFactor=.)} %>%
+  ggplot(aes(sample,sizeFactor)) + theme_minimal() +
+  geom_bar(stat="identity") + coord_flip()
+DESeq2::plotDispEsts(dds)
+```
+
+#### Extract results
+
+```{r extractRes}
+#res <- mapply(function(x)
+#  DESeq2::results(dds,x,lfcThreshold=lfcthreth,alpha=fdr)
+#,contrast)
+
+res <- mapply(function(x)
+  DESeq2::results(dds,x,lfcThreshold=lfcthreth,alpha=fdr)
+,contrast)
+
+
+# 200914修正
+re_all <- map(res,as_tibble,rownames="ens_gene") %>%
+  tibble(aspect=factor(names(.),names(.)),data=.) %>%
+  mutate(data=map(data,annotate)) %>%
+  unnest(cols = "data")
+
+re <- re_all %>% filter(padj<fdr) #191120修正 unnest() 
+
+
+#re <- map(res,as_tibble,rownames="ens_gene") %>%
+#  tibble(aspect=factor(names(.),names(.)),data=.) %>%
+#  mutate(data=map(data,annotate)) %>%
+#  unnest(cols = "data") %>% filter(padj<fdr)  #191120修正 unnest() 
+
+fc <- re %>% select(1:7) %>% spread(aspect,log2FoldChange,fill=0)
+
+imap(res,~{
+  cat(paste0("-- ",.y," --"))
+  DESeq2::summary(.x) #191120修正 DESeq2::summary.DESeqResults(.x)
+}) %>% invisible
+
+```
+
+### Write-out tables
+
+```{r writeout}
+if(exists("fc"))   readr::write_csv(fc,"./2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_l2fc__final200915.csv")
+if(exists("re"))   readr::write_csv(re,"./2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_results__final200915.csv")
+if(exists("re_all"))   readr::write_csv(re_all,"./2gun/Iwasaki_0386re_C2C12_H3mm18_noumi_resultsall__final200915.csv")
+```
+
+DESeqのlog2FCの計算について (coef_ddsから計算する方法)
+(20200915検証)
+
+```{r coef_ddslog2FC}
+
+# log2FC
+re %>% filter(aspect=="group_G_mm18B_vs_eGFP") %>% filter(ens_gene %in% c("ENSMUSG00000088252","ENSMUSG00000024754","ENSMUSG00000024646","ENSMUSG00000032741","ENSMUSG00000031885"))
+
+
+re %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% filter(ens_gene %in% c("ENSMUSG00000088252","ENSMUSG00000024754","ENSMUSG00000024646","ENSMUSG00000032741","ENSMUSG00000031885"))
+
+# coefから再現　(引き算をするだけで良い)
+dddddd <- coef_dds %>% filter(ens_gene %in% c("ENSMUSG00000088252","ENSMUSG00000024754","ENSMUSG00000024646","ENSMUSG00000032741","ENSMUSG00000031885"))
+dddddd %>% mutate(-group_eGFP_G_vs_mm18B_G, group_mm18B_D72_vs_mm18B_G-group_eGFP_D72_vs_mm18B_G)
+
+```
+
+### MAplot
+
+```{r writeout maplot}
+
+## Growth ##
+
+#maplot <- DESeq2::plotMA(res$group_G_mm18B_vs_eGFP, ylim=c(-6,6))
+#print(maplot)
+
+maplot <- DESeq2::plotMA(res$group_G_mm18B_vs_eGFP, ylim=c(-4,4),main="G mm18B vs eGFP")
+print(maplot)
+maplot <- DESeq2::plotMA(res$group_G_mm18B_vs_eGFP, ylim=c(-5,5),main="G mm18B vs eGFP")
+print(maplot)
+
+#maplot <- DESeq2::plotMA(res$group_G_mm18B_vs_eGFP, ylim=c(-2,2))
+#print(maplot)
+
+
+## D72 ##
+
+#maplot <- DESeq2::plotMA(res$group_D72_mm18B_vs_eGFP, ylim=c(-6,6))
+#print(maplot)
+
+maplot <- DESeq2::plotMA(res$group_D72_mm18B_vs_eGFP, ylim=c(-4,4),main="D72 mm18B vs eGFP")
+print(maplot)
+maplot <- DESeq2::plotMA(res$group_D72_mm18B_vs_eGFP, ylim=c(-5,5),main="D72 mm18B vs eGFP")
+print(maplot)
+
+#maplot <- DESeq2::plotMA(res$group_D72_mm18B_vs_eGFP, ylim=c(-2,2))
+#print(maplot)
+
+```
+
+こちらで横軸を計算してプロット
+20200914add (20200915ver)
+
+```{r norm count def table}
+
+Set_cutoff <- 10.0
+
+## 各時刻の平均を計算し、normalized count > 10 を超えるものを抽出する。
+
+#----- 使用するデータのみ取り出す ---# 20200914
+norm_plotlist_all <- normalizedcount %>% gather("sample", "normalized",-(ens_gene)) %>% inner_join(def, by = "sample") %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("mm18B","eGFP"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72")))
+
+#norm_plotlist_sel <- norm_plotlist_all %>% filter(sample %in% def_select$sample) %>% mutate(time=factor(time, c("G","D72")))%>% mutate(type=factor(type,c("eGFP","mm18B"))) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72")))
+
+#notm_plotlist_cutoff <- norm_plotlist_all %>% annotate() %>% group_by(ens_gene, ext_gene, Day, intact_CTX) %>% summarise(groupMean=mean(normalized))  %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+## "eGFP","mm18B"関係なく平均を求める
+notm_plotlist_beforecutoff <- norm_plotlist_all %>% annotate() %>% group_by(ens_gene, ext_gene, time) %>% summarise(groupMean=mean(normalized))
+#notm_plotlist_beforecutoff <- norm_plotlist_sel %>% annotate() %>% group_by(ens_gene, ext_gene, time) %>% summarise(groupMean=mean(normalized))
+
+notm_plotlist_cutoff <- notm_plotlist_beforecutoff %>% filter(groupMean > Set_cutoff) %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()
+
+nrow(notm_plotlist_beforecutoff %>% ungroup() %>% dplyr::select(ens_gene, ext_gene) %>% unique()) #この値をMAplotのx軸に使用
+nrow(notm_plotlist_cutoff) #解析対象を絞る　(後の全体のクラスタリングに使用)
+
+
+```
+
+```{r norm_plotlist_all}
+
+norm_plotlist_all %>% readr::write_csv("Norm_deftable_all_final200915.csv")
+#norm_plotlist_sel %>% readr::write_csv("Norm_deftable_select_final200915.csv") #これをMAplotに使用する
+notm_plotlist_beforecutoff %>% readr::write_csv("Norm_groupMean_select_final200915.csv")
+notm_plotlist_cutoff  %>% readr::write_csv("Norm_groupMean_select_cutoff10_final200915.csv")
+
+nrow(norm_plotlist_all)
+#nrow(norm_plotlist_sel)
+nrow(notm_plotlist_beforecutoff)
+nrow(notm_plotlist_cutoff)
+
+```
+
+
+```{r maplot draw, fig.width = 7, fig.height = 8}
+
+re_select_plot <- re_all %>% filter(aspect %in% c("group_G_mm18B_vs_eGFP","group_D72_mm18B_vs_eGFP")) %>% mutate(time=case_when(aspect=="group_G_mm18B_vs_eGFP"~"G",aspect=="group_D72_mm18B_vs_eGFP"~"D72",TRUE ~ "FALSE"))  %>% left_join(notm_plotlist_beforecutoff) %>% mutate(time=factor(time, c("G","D72")))
+
+re_select_plot %>% readr::write_csv("./MAplot/C2C12_mm18B_vs_eGFP_DEG_time_MAplotdata.csv")
+
+####
+
+Daymean <- re_select_plot %>% group_by(time) %>% summarise(DayMean=mean(groupMean))
+Mean_color <- "#B8860B"
+
+Daymean
+
+Allgene_num <- re_select_plot %>% dplyr::select(ens_gene) %>% unique() %>% nrow()
+
+
+```
+
+
+
+```{r MAplot DEGs, fig.width = 6, fig.height = 8}
+
+f_DEG_in <- function(x) x %>% filter(padj<0.1)
+f_DEG_out <- function(x) x %>% filter((!(padj<0.1))|is.na(padj))
+
+
+f_inFC_degin <- function(x) x %>% f_DEG_in %>% filter(!(abs(log2FoldChange) > 5.0))
+f_inFC_degout <- function(x) x %>% f_DEG_out %>% filter(!(abs(log2FoldChange) > 5.0))
+
+f_overFC_up_degin <- function(x) x %>% f_DEG_in %>% filter(log2FoldChange > 5.0) %>% mutate(log2FoldChange=5.0) 
+f_overFC_down_degin <- function(x) x %>% f_DEG_in %>% filter(log2FoldChange < -5.0) %>% mutate(log2FoldChange=-5.0)
+f_overFC_up_degout <- function(x) x %>% f_DEG_out %>% filter(log2FoldChange > 5.0) %>% mutate(log2FoldChange=5.0)
+f_overFC_down_degout <- function(x) x %>% f_DEG_out %>% filter(log2FoldChange < -5.0) %>% mutate(log2FoldChange=-5.0)
+
+
+### 全て
+re_select_plot %>% group_by(aspect) %>% summarise(n())
+
+### DEG
+re_select_plot %>% f_DEG_in %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_inFC_degin %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_up_degin %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_down_degin %>% group_by(aspect) %>% summarise(n())
+
+### DEG 以外
+re_select_plot %>% f_DEG_out %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_inFC_degout %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_up_degout %>% group_by(aspect) %>% summarise(n())
+re_select_plot %>% f_overFC_down_degout %>% group_by(aspect) %>% summarise(n())
+
+ddddddddd <- re_select_plot  %>% f_DEG_in %>% mutate(FC_updown = case_when(log2FoldChange>0~"Up", log2FoldChange<0~"Down")) %>% mutate(FC_updown=factor(FC_updown,c("Up","Down"))) %>% arrange(time,FC_updown)
+eeeeeeeee <- ddddddddd  %>% group_by(aspect,time,FC_updown) %>% summarise(count=n())
+
+
+gggglabel <- paste("C2C12 mm18B_vs_eGFP:", Allgene_num, "genes,",
+                   "G:",eeeeeeeee$FC_updown[1],eeeeeeeee$count[1],",",eeeeeeeee$FC_updown[2],eeeeeeeee$count[2],
+                   ",","D72:",eeeeeeeee$FC_updown[3],eeeeeeeee$count[3],",",eeeeeeeee$FC_updown[4],eeeeeeeee$count[4],sep=" ")
+print(gggglabel)
+
+######
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2) +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=5))
+
+#+ scale_color_manual(values = c("#ff0000","#ff0000","#000000")) 
+
+ggsave(file="./MAplot/C2C12_mm18B_vs_eGFP_DEG_time_MAplot.pdf", plot = ggmaplot, width = 6, height = 8, dpi = 120)
+plot(ggmaplot)
+
+
+ggmaplot <- re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_DEG_out,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_DEG_in) + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=5))
+
+#+ scale_color_manual(values = c("#ff0000","#ff0000","#000000")) 
+
+ggsave(file="./MAplot/C2C12_mm18B_vs_eGFP_DEG_time_MAplot_Mean.pdf", plot = ggmaplot, width = 6, height = 8, dpi = 120)
+plot(ggmaplot)
+
+######
+## FC over5も出力
+
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=5))
+
+ggsave(file="./MAplot/C2C12_mm18B_vs_eGFP_DEG_time_MAplot_over5.pdf", plot = ggmaplot, width = 6, height = 8, dpi = 120)
+plot(ggmaplot)
+
+
+ggmaplot <-  re_select_plot  %>%  ggplot(aes(groupMean,log2FoldChange))+geom_point(size=0.1, alpha = 0.5,data=f_inFC_degout,color="#bdbdbd") +geom_point(size=0.2, alpha = 0.5,shape=2,data=f_overFC_up_degout,color="#bdbdbd")+geom_point(size=0.2, alpha = 0.5,shape=6,data=f_overFC_down_degout,color="#bdbdbd") + geom_abline(intercept=0,slope=0,colour="black",size=0.2)  + geom_vline(data = Daymean, aes(xintercept=DayMean),colour=Mean_color,size=0.2,linetype="dashed") +geom_point(aes(groupMean,log2FoldChange),size=0.1,color="#ff0000", data=f_inFC_degin) +geom_point(size=0.3, shape=2,data=f_overFC_up_degin,color="#ff0000") +geom_point(size=0.3, shape=6,data=f_overFC_down_degin,color="#ff0000")  + scale_x_log10() + theme_bw() + theme(legend.position = "top") + ggtitle(gggglabel) + ylim(-5.0, 5.0) + facet_wrap(~time,ncol=1) + theme(axis.title = element_text(size=15),axis.text = element_text(size=10),axis.text.x = element_text(hjust = 0.5,vjust=1.0), legend.position = "right", strip.text=element_text(size=15),strip.background = element_blank(),title = element_text(size=5))
+
+ggsave(file="./MAplot/C2C12_mm18B_vs_eGFP_DEG_time_MAplot_Mean_over5.pdf", plot = ggmaplot, width = 6, height = 8, dpi = 120)
+plot(ggmaplot)
+
+```
+
+
+### GO解析 <clusterProfiler>
+
+20191204追加
+mouse, CTX, 2群間 (Up, Down) の結果GOを参考に。 (191120ver)
+
+#### 2群間 (Up, Down) の結果をGO
+```{r GO Load list part3-1}
+
+
+table_degcluster <- re %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% arrange(ens_gene) %>% dplyr::select(ens_gene,ext_gene,log2FoldChange)
+
+#file_degcluster <- "/home/guestA/o70578a/akuwakado/kuwakado/scCELSeq2/Iwasaki_0386_C2C12_H3mm18/Final_Last_Rserver_200523/Iwasaki_0386re_C2C12_H3mm18_noumi_results__final200523.csv"
+#table_degcluster <- readr::read_csv(file_degcluster) %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% arrange(ens_gene) %>% dplyr::select(ens_gene,ext_gene,log2FoldChange)
+
+# plus
+table_degcluster %>% filter(log2FoldChange>0) %>% summarise(plus = dplyr::n())
+
+# minus
+table_degcluster %>% filter(log2FoldChange<0) %>% summarise(minus = dplyr::n())
+
+##### FDR setting ######
+gofdr <- 0.1
+
+cluster_num <- 2
+
+```
+
+20191106修正を参考に
+Up Down用
+
+(20200915, defaltのGOのplotの調子が悪い)
+
+```{r go clusterProfile part3-2}
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+
+#-------------#
+
+filename_list <- "./clusterProfile/Iwasaki_0386re_C2C12_H3mm18_2gunfdr0p1_log2FoldChange_BPfdr0p1_generatio_"
+filename_csv <- "./clusterProfile/Iwasaki_0386re_C2C12_H3mm18_2gunfdr0p1_log2FoldChange_BPfdr0p1_generatio_UpDown"
+
+#-------------#
+
+cluster_list <- as.list(NA) #初期化
+
+for (i in 1:2) {
+  pre_list <- as.list(NA)  #初期化
+   
+  if (i == 1) { 
+    pre_list <- table_degcluster %>%  filter(log2FoldChange>0) %>% dplyr::select(ens_gene) %>% as.list()
+    #pre_list <- table_degcluster %>% filter(log2FoldChange=="Up") %>% dplyr::select(ens_gene) %>% as.list()
+    names(pre_list) <- paste("ENSEMBL",as.character("up"),sep="_")
+  } 
+  else { 
+    pre_list <- table_degcluster %>%  filter(log2FoldChange<0) %>% dplyr::select(ens_gene) %>% as.list()
+    names(pre_list) <- paste("ENSEMBL",as.character("down"),sep="_")
+  }
+   
+  if (i == 1) { 
+     cluster_list <- pre_list
+  } 
+  else cluster_list <- c(cluster_list, pre_list) 
+}
+
+
+
+for (i in 1:2) {
+  print(paste(i, cluster_list[[i]] %>% tibble::enframe(name = NULL) %>% nrow(), sep=", "))
+  #print(paste(i, cluster_list[[i]] %>% as_tibble() %>% nrow(), sep=", ")) #Calling `as_tibble()` on a vector is discouraged, because the behavior is likely to change in the future. Use `tibble::enframe(name = NULL)` instead.
+   
+  pre_ego_BP <- enrichGO(gene = cluster_list[[i]],
+                 OrgDb = "org.Mm.eg.db",
+                 keyType = 'ENSEMBL',
+                 ont = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = gofdr, qvalueCutoff  = 1.0)
+   
+   ## pvalue < qvalue < p.adjust ##
+   # qvalueCutoff  = 0.3  qvalueCutoff  = 0.2 , qvalueCutoff  = 1.0
+
+  if (i == 1) { 
+     table_ego_BP <- data.frame(pre_ego_BP) %>% mutate(cluster="Up")  # リスト型からデータフレームへ変換
+     #---- plot ---#
+     #BPplot <- dotplot(pre_ego_BP, showCategory=30, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+     #print(BPplot)
+     #ggsave(BPplot,file=paste(filename_list,"Up",".png",sep=""), width = 8, height = 12, dpi = 120)
+  } 
+  else {
+     table_ego_BP <- table_ego_BP %>% bind_rows(data.frame(pre_ego_BP) %>% mutate(cluster="Down"))
+     #---- plot ---#
+     #BPplot <- dotplot(pre_ego_BP, showCategory=30, orderBy = "Count") #clusterProfile の機能で図を描く(191106修正) wrong orderBy parameter; set to default `orderBy = "x"`
+     #print(BPplot)
+     #ggsave(BPplot,file=paste(filename_list,"Down",".png",sep=""), width = 8, height = 12, dpi = 120)
+  }
+}
+
+
+
+#------#
+# データはtable_ego_BPに。
+
+
+
+```
+
+```{r go clusterProfile part3-3}
+print(table_ego_BP %>% group_by(cluster) %>% summarise())
+#------------------------------------------------------#
+# テーブルを保存
+
+table_ego_BP1 <- table_ego_BP %>% mutate(cluster=factor(cluster,c("Up","Down"))) %>% arrange(cluster,desc(Count)) #191106
+
+readr::write_csv(table_ego_BP1,paste(filename_csv,".csv",sep=""))
+
+# 先のテーブルのgeneIDをgene nameに置換する。(20191025)
+
+tablego <- table_ego_BP1 %>% mutate(gene_name=geneID) %>% dplyr::select(-(qvalue))
+
+for (i in 1:nrow(table_degcluster)) {
+  tablego <- tablego %>% mutate(gene_name=gsub(gene_name, pattern=table_degcluster$ens_gene[i], replacement=table_degcluster$ext_gene[i], ignore.case = TRUE))
+}
+
+print(tablego)
+
+readr::write_csv(tablego,paste(filename_csv,"_genename.csv",sep=""))
+
+#------------------------------------------------------#
+
+#GOのtermの数
+print(tablego %>% group_by(cluster) %>% summarise(count_GO=n()))
+
+## 変更 ##
+table_ego_BP_2gunfdr0p1_cluster <- tablego # 自由に変更する
+
+#--- メモ ----#
+#tableggg <- table_ego_clustercluster
+#colm <- tableggg$geneID
+#for (i in 1:88) {
+#  colm <- sub(rrres_cluster3$ens_gene[i], rrres_cluster3$ext_gene[i], colm)
+#}
+#print(colm)
+
+```
+
+```{r clusterProfile  part3-4}
+# Benjamini correction を p-adjust として使用する
+# figのタイトルを修正 (20191213)
+
+file_BP_plot <- "./clusterProfile/BPfdr0p1__Iwasaki_0386re_C2C12_H3mm18_2gunfdr0p1_log2FoldChange_fin200915.pdf"
+file_BP_plot_muscle <- "./clusterProfile/BPfdr0p1__Iwasaki_0386re_C2C12_H3mm18_2gunfdr0p1_2gunfdr0p1_log2FoldChange_muscleonly_fin200915.pdf"
+
+
+#--------------------#
+
+BP_matome <- tablego
+
+rowlength <- BP_matome %>% group_by(Description) %>% summarise() %>% nrow()
+BP_plot <- BP_matome %>% filter(p.adjust<fdr) %>% ggplot(aes(x=cluster, y=reorder(Description,Count), size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme(strip.text = element_text(size = 10)) + theme_minimal() + theme(strip.text = element_text(size = 12),axis.text.x = element_text(angle = 45, hjust = 1)) + scale_fill_gradient(low = "red" , high = "blue")+ xlab("C2C12 (fdr 0.1)") + ylab("GO Description (BP)") + labs(fill=paste("p.adjust (BH) < ",as.character(fdr),sep=""))
+print(BP_plot)
+ggsave(plot=BP_plot,file=file_BP_plot, width = 10, height = (5+rowlength/6), dpi = 120,limitsize = FALSE)
+
+#---muscle関連のみ
+BP_matome_muscle <- BP_matome %>% filter(grepl("muscle", Description)|grepl("myo", Description))
+rowlength <- BP_matome_muscle %>% group_by(Description) %>% summarise() %>% nrow()
+BP_plot_muscle <- BP_matome_muscle %>% filter(p.adjust<fdr) %>% ggplot(aes(x=cluster, y=reorder(Description,Count), size=Count, fill=p.adjust)) + geom_point(shape = 21) + theme(strip.text = element_text(size = 10)) + theme_minimal() + theme(strip.text = element_text(size = 12),axis.text.x = element_text(angle = 45, hjust = 1)) + scale_fill_gradient(low = "red" , high = "blue") + xlab("C2C12 (fdr 0.1) (muscle)") + ylab("GO Description (BP)") + labs(fill=paste("p.adjust (BH) < ",as.character(fdr),sep=""))
+print(BP_plot_muscle)
+ggsave(BP_plot_muscle,file=file_BP_plot_muscle, width = 8, height = (5+rowlength/6), dpi = 120,limitsize = FALSE)
+
+
+```
+
+```{R memo part3-6}
+
+# x=pvalue, y=p.adjust
+plottt <- table_ego_BP %>% ggplot(aes(x=pvalue, y=p.adjust, size=Count)) + geom_point()+geom_abline(intercept=0,slope=1.0,linetype="dashed",colour="blue") + xlim(0,NA) + ylim(0,NA) + ggtitle(label=paste("p.adjust (BH) < ",as.character(fdr),sep=""))
+print(plottt)
+
+# x=pvalue, y=qvalue
+plottt <- table_ego_BP %>% ggplot(aes(x=pvalue, y=qvalue, size=Count)) + geom_point()+geom_abline(intercept=0,slope=1.0,linetype="dashed",colour="blue") + xlim(0,NA) + ylim(0,NA) + ggtitle(label=paste("p.adjust (BH) < ",as.character(fdr),sep=""))
+print(plottt)
+
+# x=p.adjust, y=qvalue
+plottt <- table_ego_BP %>% ggplot(aes(x=p.adjust, y=qvalue, size=Count)) + geom_point()+geom_abline(intercept=0,slope=1.0,linetype="dashed",colour="blue") + xlim(0,NA) + ylim(0,NA) + ggtitle(label=paste("p.adjust (BH) < ",as.character(fdr),sep=""))
+print(plottt)
+
+
+## pvalue < qvalue < p.adjust ##
+# pvalue < p.adjust
+# pvalue < qvalue
+# qvalue < p.adjust
+
+#---------------------#
+
+#[BBRB-seq_0438_QC_tmpl_v6_noumi_190515-H3mm18KO_CTX_S2-Day0_S3_fdr0p2ver_and_LRT_191024  (umi補正なし,fdr0.2) (TPM 190722ver) (190924を元に) (190627-1024)]を参考にした。
+
+#pvalueCutoff	
+#pvalue cutoff on enrichment tests to report
+
+#pAdjustMethod	
+#one of "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"
+
+#qvalueCutoff	
+#qvalue cutoff on enrichment tests to report as significant. Tests must pass i) pvalueCutoff on unadjusted pvalues, ii) pvalueCutoff on adjusted pvalues and iii) qvalueCutoff on qvalues to be reported.
+
+# 設定(pvalueCutoff  = 0.1, qvalueCutoff  = 0.2)だと、p値<0.1, p.adjust値<0.1, q値<0.2 になっている。
+
+```
+
+plot Top GO (20200915 add)
+
+```{r Top GO data}
+
+tablego_top <- tablego %>% group_by(cluster) %>% arrange(desc(Count), p.adjust, pvalue) %>% mutate(rank=row_number()) %>% filter(rank<=10)
+print(tablego_top)
+
+filename <- paste(dirname(filename_csv),"/Top10__",basename(filename_csv),"_genename.csv",sep="")
+print(filename)
+readr::write_csv(tablego_top,filename)
+
+# C2 Top10
+#file_c2 <- "/home/akuwakado/makeplot_18project/Inputfile/Iwasaki_0386re_C2C12_H3mm18_2gunfdr0p1_log2FoldChange_BPfdr0p1_generatio_UpDown_genename.csv"
+#datac2 <- readr::read_csv(file_c2) %>% group_by(cluster) %>% arrange(desc(Count), p.adjust, pvalue) %>% mutate(rank=row_number()) %>% filter(rank<=10)
+#print(datac2)
+#filename <- paste("./Outputfile/","Top10__",basename(file_c2),sep="")
+#print(filename)
+#datac2 %>% readr::write_csv(filename)
+
+
+```
+
+一度に描画
+
+```{r plotfacet c2, fig.width=6, fig.height=6}
+
+plot_tablego_top <- tablego_top %>% ungroup()  %>% mutate(cluster=factor(cluster,c("Up","Down"))) %>% group_by(cluster) %>% dplyr::mutate(GeneRatio1=GeneRatio) %>% tidyr::separate(col=GeneRatio1,sep="/",into=c("count","BP_genesize")) %>% mutate(BP_genesize=as.integer(BP_genesize),Gene_ratio=Count/BP_genesize) %>% dplyr::select(-count)
+
+plot_tablego_top %>% summarise(max=max(Gene_ratio),min=min(Gene_ratio))
+
+
+plot_tablego_top %>% summarise(max=max(Count),min=min(Count))
+
+plot_tablego_top_2 <- plot_tablego_top %>% mutate(new_Description = paste("(",cluster,") ",Description,sep=""))
+
+#xmax=0.175
+#xmin=0.085
+#all_break <- c(3,6,9,12,15)
+
+
+xmax=0.085
+xmin=0.050
+#all_break <- c(55,60,65,70,75,80,85)
+all_break <- c(50,55,60,65,70,75) #+ scale_size_area(breaks=all_break)
+
+sort_plot_tablego_top_2 <- plot_tablego_top_2 %>% arrange(desc(rank))
+
+gggU <- plot_tablego_top_2 %>% arrange(desc(rank)) %>% mutate(new_Description =factor(new_Description,sort_plot_tablego_top_2$new_Description)) %>% ggplot(aes(x=Gene_ratio, y=new_Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_text(size = 12),legend.title = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size = 12),axis.text = element_text(size = 12),axis.text.x = element_text(vjust = 1),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~cluster,scales = "free_y",ncol=1)
+
+gggU0 <- plot_tablego_top_2 %>% arrange(desc(rank)) %>% mutate(new_Description =factor(new_Description,sort_plot_tablego_top_2$new_Description))  %>% ggplot(aes(x=Gene_ratio, y=new_Description, fill=p.adjust)) + geom_point(aes(size=Count),shape = 21) + theme_bw() + theme(legend.position = "right",legend.box="horizontal",strip.text = element_blank(),legend.title = element_blank(),axis.title = element_blank(),legend.text = element_blank(),axis.text = element_blank(),axis.text.x = element_blank(),strip.background = element_blank()) + scale_fill_gradient(low = "red" , high = "blue",limits = c(0, 0.1)) + xlim(xmin,xmax) + facet_wrap(~cluster,scales = "free_y",ncol=1)
+
+print(gggU)
+print(gggU0)
+
+filename <- paste(dirname(filename_csv),"/Top10__",basename(filename_csv),"_plot.pdf",sep="")
+print(filename)
+ggsave(gggU,file=filename, width = 8, height = 7, dpi = 120,limitsize = FALSE)
+
+filename <- paste(dirname(filename_csv),"/Top10__",basename(filename_csv),"_plot_none.pdf",sep="")
+print(filename)
+ggsave(gggU0,file=filename, width = 4, height = 7, dpi = 120,limitsize = FALSE)
+
+
+#ggsave(gggU,file=paste("./Outputfile/","C2C12_H3mm18_CEL0386re__clusterAll_Top10_BPfdr0p1_plot.pdf",sep=""), width = 8, height = 7, dpi = 120,limitsize = FALSE)
+#ggsave(gggU0,file=paste("./Outputfile/","C2C12_H3mm18_CEL0386re__clusterAll_Top10_BPfdr0p1_plot_none.pdf",sep=""), width = 4, height = 7, dpi = 120,limitsize = FALSE)
+
+
+```
+
+
+Top GO term heatmap
+
+(GO 20200915ver)
+
+
+```{r load data GO}
+
+GOdata_top10 <- tablego_top
+
+raa <- strsplit(GOdata_top10$geneID , "/")
+
+for (i in 1:nrow(GOdata_top10)) {
+  rbbb <- data.frame(Description=rep(GOdata_top10$Description[i],length(raa[[i]])), cluster=rep(GOdata_top10$cluster[i],length(raa[[i]])), ens_gene=raa[[i]])
+
+  if (i == 1) {
+    Top10GO <- rbbb
+  } 
+  else {
+     Top10GO <- Top10GO %>% bind_rows(rbbb)
+  }
+}
+
+Top10GO_t <- Top10GO %>% as_tibble() %>% mutate(Description=as.character(Description),ens_gene=as.character(ens_gene),cluster=as.character(cluster))
+
+Top10GO_s <- Top10GO_t %>% group_by(ens_gene,cluster) %>% summarise(Des=paste(Description, collapse = ", ")) %>% ungroup()
+
+readr::write_csv(Top10GO_s, "./clusterProfile/heatmap/CEL0386noumi_C2C12_H3mm18__DEG_GOtop10_genelist__20200915.csv")
+
+Top10GO_s_down <- Top10GO_s %>% filter(cluster=="Down")
+Top10GO_s_up <- Top10GO_s %>% filter(cluster=="Up")  
+
+```
+
+
+```{r heatmap}
+
+zscore_type_Top10GO_deg <- zscore_type %>% filter(ens_gene %in% Top10GO_s$ens_gene)
+
+zscore_type_Top10GO_up <- zscore_type %>% filter(ens_gene %in% Top10GO_s_up$ens_gene)
+zscore_type_Top10GO_down <- zscore_type %>% filter(ens_gene %in% Top10GO_s_down$ens_gene)
+
+zscore_type_housekeep <- zscore_type %>% filter(ext_gene %in% c("Rpl27","Actb","Gapdh"))
+re %>% filter(ext_gene %in% c("Rpl27","Actb","Gapdh"))
+
+```
+
+### z score heatmap (new)
+
+```{r heatmap clustering draw, fig.hight=10,fig.width=10}
+
+breaksList = seq(-3.0, 3.0, 0.1)
+heatmapcols <- colorRampPalette(rev(brewer.pal(n=7,name="RdYlBu")))(length(breaksList))
+
+def_select <- def %>% dplyr::filter(group %in% c("mm18B_G", "eGFP_G","mm18B_D72", "eGFP_D72")) %>% mutate(group=factor(group,c("eGFP_G","mm18B_G","eGFP_D72", "mm18B_D72"))) %>% arrange(group,sample)
+#================================================#
+
+
+#anno_row <- data.frame(Chr = zscore_BRBDEG$chr, cluster = zscore_BRBDEG$cluster)
+#rownames(anno_row) <- zscore_BRBDEG$ext_gene
+
+#anno_col <- data.frame(Seq = def_list_select$seq, Dox = def_list_select$type)
+#rownames(anno_col) <- def_list_select$sample
+#================================================#
+
+
+zscore_mat_down <-  zscore_type_Top10GO_down %>% dplyr::select(all_of(def_select$sample)) %>% as.matrix()
+rownames(zscore_mat_down) <- zscore_type_Top10GO_down$ext_gene
+heat_title_down <- paste("Top10GO down: ",nrow(zscore_type_Top10GO_down)," Total: ",nrow(zscore_type),sep="")
+
+zscore_mat_up <-  zscore_type_Top10GO_up %>% dplyr::select(all_of(def_select$sample)) %>% as.matrix()
+rownames(zscore_mat_up) <- zscore_type_Top10GO_up$ext_gene
+heat_title_up <- paste("Top10GO up: ",nrow(zscore_type_Top10GO_up)," Total: ",nrow(zscore_type),sep="")
+
+zscore_mat_keep <-  zscore_type_housekeep %>% dplyr::select(all_of(def_select$sample)) %>% as.matrix()
+rownames(zscore_mat_keep) <- zscore_type_housekeep$ext_gene
+heat_title_keep <- paste("Housekeeping: ",nrow(zscore_type_housekeep)," Total: ",nrow(zscore_type),sep="")
+
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_down,
+                                  
+     main = heat_title_down,
+                                  
+     scale = "none",
+     
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     #cluster_cols = FALSE, #samplrf
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     #show_rownames = TRUE, #peak名 (領域名)
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     #annotation_names_col = TRUE,
+     #show_rownames = TRUE, #peak名
+     #show_colnames = TRUE, #sample_position名
+     #annotation_names_col =TRUE,
+     #gaps_row=table_gap$nonoo,
+     #gaps_col=c(3,6,8,11),
+     
+     #na_col ="white",
+
+     gaps_row=c(80),
+     gaps_col= seq(5, 20, 5),
+     #gaps_col= seq(2, 8*2, 2),
+     #gaps_col= c(2,4,6,8,10,12,14), # c(3, 6, 9, 12), #gaps_col= seq(2, 6*2, 2),
+     #gaps_col=c(200,400,600,800,1000,1200,1400,1600,1800,2000,2200,2400), gaps_col= seq(200, 12*200, 200),
+     #cellheight = nrow(mymatrix2_1)*(0.25),
+     #cellwidth = 20,
+     #cellheight = 400/nrow(mymatrix1),
+     #cellheight = 0.005,   #cellheight = 1.5,
+     #cellheight = 0.010,   #cellheight = 1.5,
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 40,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 8,      #cellwidth = 3,
+     #cellheight = 6,   #cellheight = 1.5,
+
+     #cellheight = 6,   #cellheight = 1.5,
+     #cellwidth = 7,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 15,      #cellwidth = 3,
+     #border_color="gray",  #border_color="#000000",
+     border_color=NA,
+     #fontsize_row = 6,
+     #annotation_row = mixed_name,
+     #annotation_row = anno_row,
+     #annotation_col = anno_col,
+     
+#     cutree_rows = 6,
+     #cutree_rows = 10,
+     
+     #display_numbers = TRUE,
+     #number_format = "%1.2e",
+     #number_color = "black",
+     #annotation_col = annotdf_sample
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     #fontsize_row = 0.6,
+     legend=TRUE,
+     #legend_breaks = leg_break,
+     #legend_labels = as.character(leg_break),
+     breaks = breaksList,
+     color = heatmapcols
+     #annotation_colors = mycolors
+     #treeheight_row = 10
+)
+
+ggsave(plot=z_heat1,file="./clusterProfile/heatmap/heatmap_down.pdf", width = 15, height = 15, dpi = 360, limitsize = FALSE)
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_up,
+                                  
+     main = heat_title_up,
+                                 
+     scale = "none",
+     
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     #cluster_cols = FALSE, #samplrf
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     #show_rownames = TRUE, #peak名 (領域名)
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     #annotation_names_col = TRUE,
+     #show_rownames = TRUE, #peak名
+     #show_colnames = TRUE, #sample_position名
+     #annotation_names_col =TRUE,
+     #gaps_row=table_gap$nonoo,
+     #gaps_col=c(3,6,8,11),
+     
+     #na_col ="white",
+
+     gaps_row=c(80),
+     gaps_col= seq(5, 20, 5),
+     #gaps_col= seq(2, 8*2, 2),
+     #gaps_col= c(2,4,6,8,10,12,14), # c(3, 6, 9, 12), #gaps_col= seq(2, 6*2, 2),
+     #gaps_col=c(200,400,600,800,1000,1200,1400,1600,1800,2000,2200,2400), gaps_col= seq(200, 12*200, 200),
+     #cellheight = nrow(mymatrix2_1)*(0.25),
+     #cellwidth = 20,
+     #cellheight = 400/nrow(mymatrix1),
+     #cellheight = 0.005,   #cellheight = 1.5,
+     #cellheight = 0.010,   #cellheight = 1.5,
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 40,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 8,      #cellwidth = 3,
+     #cellheight = 6,   #cellheight = 1.5,
+
+     #cellheight = 6,   #cellheight = 1.5,
+     #cellwidth = 7,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 15,      #cellwidth = 3,
+     #border_color="gray",  #border_color="#000000",
+     border_color=NA,
+     #fontsize_row = 6,
+     #annotation_row = mixed_name,
+     #annotation_row = anno_row,
+     #annotation_col = anno_col,
+     
+#     cutree_rows = 6,
+     #cutree_rows = 10,
+     
+     #display_numbers = TRUE,
+     #number_format = "%1.2e",
+     #number_color = "black",
+     #annotation_col = annotdf_sample
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     #fontsize_row = 0.6,
+     legend=TRUE,
+     #legend_breaks = leg_break,
+     #legend_labels = as.character(leg_break),
+     breaks = breaksList,
+     color = heatmapcols
+     #annotation_colors = mycolors
+     #treeheight_row = 10
+)
+
+#ggsave(plot=z_heat1,file="./H3K27me3_ChIL_heatmap.png", width = 8, height = 15, dpi = 360, limitsize = FALSE)
+ggsave(plot=z_heat1,file="./clusterProfile/heatmap/heatmap_up.pdf", width = 15, height = 20, dpi = 360, limitsize = FALSE)
+
+#================================================#
+z_heat1 <- pheatmap::pheatmap(zscore_mat_keep,
+                                  
+     main = heat_title_keep,
+                                  
+     scale = "none",
+     
+     
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     #cluster_cols = FALSE, #samplrf
+     #cluster_rows = FALSE, #peak (clusterで)  (領域名)
+     cluster_rows = TRUE, #peak (clusterで)  (領域名)
+     cluster_cols = FALSE, #samplrf
+
+     #show_rownames = TRUE, #peak名 (領域名)
+     show_rownames = TRUE, #peak名 (領域名)
+     show_colnames = TRUE, #sample_position名 (モチーフ名)
+     
+     #annotation_names_col = TRUE,
+     #show_rownames = TRUE, #peak名
+     #show_colnames = TRUE, #sample_position名
+     #annotation_names_col =TRUE,
+     #gaps_row=table_gap$nonoo,
+     #gaps_col=c(3,6,8,11),
+     
+     #na_col ="white",
+
+     gaps_row=c(80),
+     gaps_col= seq(5, 20, 5),
+     #gaps_col= seq(2, 8*2, 2),
+     #gaps_col= c(2,4,6,8,10,12,14), # c(3, 6, 9, 12), #gaps_col= seq(2, 6*2, 2),
+     #gaps_col=c(200,400,600,800,1000,1200,1400,1600,1800,2000,2200,2400), gaps_col= seq(200, 12*200, 200),
+     #cellheight = nrow(mymatrix2_1)*(0.25),
+     #cellwidth = 20,
+     #cellheight = 400/nrow(mymatrix1),
+     #cellheight = 0.005,   #cellheight = 1.5,
+     #cellheight = 0.010,   #cellheight = 1.5,
+     cellheight = 4.0,   #cellheight = 1.5,
+     cellwidth = 40,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 8,      #cellwidth = 3,
+     #cellheight = 6,   #cellheight = 1.5,
+
+     #cellheight = 6,   #cellheight = 1.5,
+     #cellwidth = 7,      #cellwidth = 3,
+     #cellheight = 0.7,   #cellheight = 1.5,
+     #cellwidth = 15,      #cellwidth = 3,
+     #border_color="gray",  #border_color="#000000",
+     border_color=NA,
+     #fontsize_row = 6,
+     #annotation_row = mixed_name,
+     #annotation_row = anno_row,
+     #annotation_col = anno_col,
+     
+#     cutree_rows = 6,
+     #cutree_rows = 10,
+     
+     #display_numbers = TRUE,
+     #number_format = "%1.2e",
+     #number_color = "black",
+     #annotation_col = annotdf_sample
+     fontsize_col = 5,
+     fontsize_row = 3.7,
+     #fontsize_row = 0.6,
+     legend=TRUE,
+     #legend_breaks = leg_break,
+     #legend_labels = as.character(leg_break),
+     breaks = breaksList,
+     color = heatmapcols
+     #annotation_colors = mycolors
+     #treeheight_row = 10
+)
+
+#ggsave(plot=z_heat1,file="./H3K27me3_ChIL_heatmap.png", width = 8, height = 15, dpi = 360, limitsize = FALSE)
+ggsave(plot=z_heat1,file="./clusterProfile/heatmap/heatmap_housekeeping.pdf", width = 15, height = 15, dpi = 360, limitsize = FALSE)
+
+```
+
+
+
+### normalized count plot
+
+```{r normCount Matome}
+# 2019 12月作成
+
+norm_plotlist_all_name <- norm_plotlist_all %>% inner_join(e2g, by = "ens_gene") 
+readr::write_csv(norm_plotlist_all_name,"Norm_deftable_all_final200915__genename.csv") #191206 追加
+
+nrow(norm_plotlist_all)
+nrow(norm_plotlist_all_name)
+
+```
+
+
+norm_plotlist_all "Norm_deftable_all_final200915.csv" を使う
+
+```{r normcount, fig.width=12,fig.height=9}
+
+plotgene_list <- c("Col3a1","Acta1","Myog","Myod1","Tnnt1","Tnnt2","Tnnt3","Csrp3","Myh3","Ckm","Rpl27","Actb","Gapdh","Slc38a2","Inhba","Myh9","Rpl13","Nsdhl")
+length(plotgene_list)
+
+#"Myh3","Ckm","Acta1","Tnnt2","Actb","Csrp3"
+
+re %>% filter(aspect=="group_D72_mm18B_vs_eGFP") %>% filter(ext_gene %in% plotgene_list) %>% arrange(log2FoldChange)
+
+#======== Change every data ここで順番を変更 ========#
+
+#-------#
+
+nbl <- norm_plotlist_all_name %>% filter(ext_gene %in% plotgene_list)
+
+#====================================================#
+
+f_gene_norm <- function(x) x %>% group_by(group, type, time, ext_gene) %>% summarise(avg=mean(normalized),se=sd(normalized)/sqrt(length(normalized))) %>% ungroup()
+
+#----#
+nbl %>% group_by(group, type, time) %>% summarise()
+#----#
+
+#face="italic"
+#, axis.text.x = element_text(angle = 45, hjust = 1) #X軸のラベルを傾ける場合
+#, axis.text.x = element_text(hjust = 0.5) #X軸のラベルを水平にする場合
+
+### point ###
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=3)+geom_line(size=1.0, aes(x=time,y=avg,colour=type),data=f_gene_norm)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()  + ylab("normalized count")
+
+file_path <- "./normCount/normCount_plot_final200915_plot1.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 12, height = 10)
+
+print(gggggpp)
+
+
+gggggpp <-  ggplot(nbl,aes(time,normalized,group=type,colour=type))+geom_point(size=2)+facet_wrap(~ext_gene,scale="free_y",nrow=3)+geom_smooth(se=FALSE)+theme_bw() + ylim(0,NA) + theme(axis.text=element_text(hjust = 1, size=16), axis.text.x = element_text(hjust = 0.5), axis.title=element_text(size=16),axis.title.x = element_blank(), legend.title=element_text(size=16), legend.text = element_text(size=16), strip.background = element_blank(), strip.text.x = element_text(size=20,face="italic"), legend.position = "top",  plot.title=element_text(size=16))+ggsci::scale_color_npg()  + ylab("normalized count")
+
+file_path <- "./normCount/normCount_plot_final200915_plot1_smooth.pdf"
+print(file_path)
+ggsave(file=file_path, plot = gggggpp, dpi = 100, width = 12, height = 9)
+
+
+```
+
+
+### TPM
+
+TPMで作図 (191203修正)
+
+```{r TPM Matome def 190722-1203}
+# カウント0も表示するように変更 (20190722)
+
+tpm <- umi %>% group_by(sample) %>% mutate(sample_total=sum(count),TPM=count/sum(count)*1e6) %>% ungroup
+tpm_zero <- tpm %>% select(sample,ens_gene,TPM) %>% spread(sample,TPM,fill=0) %>% gather(sample, TPM, -ens_gene) #カウント0のサンプルは0を入れる 20190722追加して修正
+
+tpm_def <- def %>% select(-count) %>% dplyr::inner_join(tpm_zero, by = "sample") #tpmをtpm_zeroに修正、20190722修正
+
+matome <- tpm_def %>% inner_join(e2g, by = "ens_gene")
+
+readr::write_csv(matome,"Iwasaki_0386re_C2C12_H3mm18_umi_TPM__final20915.csv") #191203 追加
+
+#-- 確認 --#
+umi %>% group_by(sample) %>% summarise(sum(count)) # 確認
+tpm_zero %>% group_by(sample) %>% summarise(sum(TPM)) # 確認
+head(matome)
+
+#-- 覚書 --#
+#tpm %>% filter(ens_gene=="ENSMUSG00000043090") #17個
+#tpm_zero %>% filter(ens_gene=="ENSMUSG00000043090") #32個
+
+# -- 旧ver ---
+#tpm <- umi %>% group_by(sample) %>% mutate(sample_total=sum(count),TPM=count/sum(count)*1e6) %>% ungroup
+#umi %>% group_by(sample) %>% summarise(sum(count))
+#tpm %>% group_by(sample) %>% summarise(sum(TPM))
+#tpm_def <- def %>% select(-count) %>% dplyr::inner_join(tpm, by = "sample")
+
+```
+
+
+
