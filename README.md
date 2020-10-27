@@ -2,11 +2,12 @@
 
 H3mm18 interferes with transcription on H3.3 incorporated chromatin.
 
-The high-throughput sequence data is available at GEOXXXXXX.
-
 
 We focused on H3mm18 (one of the histone H3.3 subvariants that is expressed in skeletal muscle stem cells) to understand the function of a group that is not incorporated into chromatin.
 We performed CEL-Seq2 in C2C12 cells, BRB-seq, ChIL-seq and ATAC-seq in NIH3T3 cells, and BRB-Seq in mouse tissues.
+
+
+The high-throughput sequence data and their information are available at GEOXXXXXX.
 
 
 "NIH3T3_Dox" file: NIH3T3 cell line (Dox inducible H3mm18), Mus musculus
