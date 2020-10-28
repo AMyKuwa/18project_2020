@@ -8,7 +8,7 @@ We focused on H3mm18 (one of the histone H3.3 subvariants that is expressed in s
 We performed CEL-Seq2 in C2C12 cells, BRB-seq, ChIL-seq and ATAC-seq in NIH3T3 cells, and BRB-Seq in mouse tissues.
 
 
-The high-throughput sequence data and their information are available at GEOXXXXXX.
+The high-throughput sequence data and their information are available at GEO accession GSE160203.
 
 
 "NIH3T3_Dox" file: NIH3T3 cell line (Dox inducible H3mm18), Mus musculus
